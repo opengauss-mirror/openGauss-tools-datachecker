@@ -1,0 +1,474 @@
+package com.gauss.controller;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+
+import javax.sql.DataSource;
+
+import org.apache.commons.configuration.Configuration;
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang.BooleanUtils;
+import org.apache.commons.lang.StringUtils;
+import org.slf4j.MDC;
+import org.springframework.jdbc.core.JdbcTemplate;
+
+import com.google.common.collect.Lists;
+import com.gauss.applier.CheckRecordApplier;
+import com.gauss.applier.MultiThreadCheckRecordApplier;
+import com.gauss.applier.RecordApplier;
+import com.gauss.common.GaussConstants;
+import com.gauss.common.db.DataSourceFactory;
+import com.gauss.common.db.meta.ColumnMeta;
+import com.gauss.common.db.meta.Table;
+import com.gauss.common.db.meta.TableMetaGenerator;
+import com.gauss.common.lifecycle.AbstractGaussLifeCycle;
+import com.gauss.common.model.DataSourceConfig;
+import com.gauss.common.model.DbType;
+import com.gauss.common.model.RunMode;
+import com.gauss.common.model.GaussContext;
+import com.gauss.common.stats.ProgressTracer;
+import com.gauss.common.stats.StatAggregation;
+import com.gauss.common.utils.LikeUtil;
+import com.gauss.common.utils.GaussUtils;
+import com.gauss.common.utils.thread.NamedThreadFactory;
+import com.gauss.exception.GaussException;
+import com.gauss.extractor.RecordExtractor;
+import com.gauss.extractor.mysql.MysqlOnceFullRecordExtractor;
+
+/**
+ * 整个校验流程调度控制
+ */
+public class GaussController extends AbstractGaussLifeCycle {
+
+    private DataSourceFactory        dataSourceFactory = new DataSourceFactory();
+    private Configuration            config;
+
+    private RunMode                  runMode;
+    private GaussContext            globalContext;
+    private DbType                   sourceDbType      = DbType.MYSQL;
+    private DbType                   targetDbType      = DbType.OPGS;
+
+    private TableController          tableController;
+    private ProgressTracer           progressTracer;
+    private List<GaussInstance>     instances         = Lists.newArrayList();
+    private ScheduledExecutorService schedule;
+    // 全局的工作线程池
+    private ThreadPoolExecutor       extractorExecutor = null;
+    private ThreadPoolExecutor       applierExecutor   = null;
+
+    public GaussController(Configuration config){
+        this.config = config;
+    }
+
+    @Override
+    public void start() {
+        MDC.remove(GaussConstants.MDC_TABLE_SHIT_KEY);
+        super.start();
+        if (!dataSourceFactory.isStart()) {
+            dataSourceFactory.start();
+        }
+
+        String mode = config.getString("gauss.table.mode");
+        if (StringUtils.isEmpty(mode)) {
+            throw new GaussException("gauss.table.mode should not be empty");
+        }
+        this.runMode = RunMode.valueOf(mode);
+        this.sourceDbType = DbType.valueOf(StringUtils.upperCase(config.getString("gauss.database.source.type")));
+        this.targetDbType = DbType.valueOf(StringUtils.upperCase(config.getString("gauss.database.target.type")));
+        this.globalContext = initGlobalContext();
+
+        boolean extractorDump = config.getBoolean("gauss.extractor.dump", true);
+        boolean applierDump = config.getBoolean("gauss.applier.dump", true);
+
+        int statBufferSize = config.getInt("gauss.stat.buffer.size", 16384);
+        int statPrintInterval = config.getInt("gauss.stat.print.interval", 5);
+        // 是否并行执行concurrent
+        boolean concurrent = config.getBoolean("gauss.table.concurrent.enable", false);
+
+        Collection<TableHolder> tableMetas = initTables();
+        int threadSize = 1; // 默认1，代表串行
+        if (concurrent) {
+            threadSize = config.getInt("gauss.table.concurrent.size", 5); // 并行执行的table数
+
+        }
+
+        tableController = new TableController(tableMetas.size(), threadSize);
+        progressTracer = new ProgressTracer(runMode, tableMetas.size());
+        int retryTimes = config.getInt("gauss.table.retry.times", 3);
+        int retryInterval = config.getInt("gauss.table.retry.interval", 1000);
+
+        int noUpdateThresoldDefault = -1;
+        if (threadSize < tableMetas.size()) { // 如果是非一次性并发跑，默认为3次noUpdate
+            noUpdateThresoldDefault = 3;
+        }
+        int noUpdateThresold = config.getInt("gauss.extractor.noupdate.thresold", noUpdateThresoldDefault);
+        boolean useExtractorExecutor = config.getBoolean("gauss.extractor.concurrent.global", false);
+        boolean useApplierExecutor = config.getBoolean("gauss.applier.concurrent.global", false);
+        if (useExtractorExecutor) {
+            int extractorSize = config.getInt("gauss.extractor.concurrent.size", 300);
+            extractorExecutor = new ThreadPoolExecutor(extractorSize,
+                extractorSize,
+                60,
+                TimeUnit.SECONDS,
+                new ArrayBlockingQueue<Runnable>(extractorSize * 2),
+                new NamedThreadFactory("Global-Extractor"),
+                new ThreadPoolExecutor.CallerRunsPolicy());
+        }
+
+        if (useApplierExecutor) {
+            int applierSize = config.getInt("gauss.applier.concurrent.size", 500);
+            applierExecutor = new ThreadPoolExecutor(applierSize,
+                applierSize,
+                60,
+                TimeUnit.SECONDS,
+                new ArrayBlockingQueue<Runnable>(applierSize * 2),
+                new NamedThreadFactory("Global-Applier"),
+                new ThreadPoolExecutor.CallerRunsPolicy());
+        }
+        for (TableHolder tableHolder : tableMetas) {
+            GaussContext context = buildContext(globalContext, tableHolder.table);
+            RecordExtractor extractor = chooseExtractor(tableHolder, context);
+            RecordApplier applier = chooseApplier(context);
+            GaussInstance instance = new GaussInstance(context);
+            StatAggregation statAggregation = new StatAggregation(statBufferSize, statPrintInterval);
+            instance.setExtractor(extractor);
+            instance.setApplier(applier);
+            instance.setTableController(tableController);
+            instance.setExtractorDump(extractorDump);
+            instance.setApplierDump(applierDump);
+            instance.setStatAggregation(statAggregation);
+            instance.setRetryTimes(retryTimes);
+            instance.setRetryInterval(retryInterval);
+            instance.setTargetDbType(targetDbType);
+            instance.setProgressTracer(progressTracer);
+            instance.setNoUpdateThresold(noUpdateThresold);
+            instance.setThreadSize(config.getInt("gauss.extractor.concurrent.size", 300));
+            instance.setExecutor(extractorExecutor);
+            instances.add(instance);
+        }
+
+        logger.info("## prepare start tables[{}] with concurrent[{}]", instances.size(), threadSize);
+        int progressPrintInterval = config.getInt("gauss.progress.print.interval", 1);
+        schedule = Executors.newScheduledThreadPool(2);
+        schedule.scheduleWithFixedDelay(new Runnable() {
+
+            @Override
+            public void run() {
+                try {
+                    progressTracer.print(true);
+                } catch (Throwable e) {
+                    logger.error("print progress failed", e);
+                }
+            }
+        }, progressPrintInterval, progressPrintInterval, TimeUnit.MINUTES);
+        schedule.execute(new Runnable() {
+
+            @Override
+            public void run() {
+                while (true) {
+                    try {
+                        GaussInstance instance = tableController.takeDone();
+                        if (instance.isStart()) {
+                            instance.stop();
+                        }
+                    } catch (InterruptedException e) {
+                        // do nothging
+                        return;
+                    } catch (Throwable e) {
+                        logger.error("stop failed", e);
+                    }
+                }
+            }
+        });
+
+        for (GaussInstance instance : instances) {
+            instance.start();
+            if (!concurrent) {
+                // 如果非并发，则串行等待其返回
+                try {
+                    instance.waitForDone();
+                } catch (Exception e) {
+                    processException(instance.getContext().getTableMeta(), e);
+                }
+
+                instance.stop();
+            }
+        }
+
+        MDC.remove(GaussConstants.MDC_TABLE_SHIT_KEY);
+    }
+
+    public void waitForDone() throws InterruptedException {
+        tableController.waitForDone();
+    }
+
+    @Override
+    public void stop() {
+        super.stop();
+        for (GaussInstance instance : instances) {
+            if (instance.isStart()) {
+                instance.stop();
+            }
+        }
+        schedule.shutdownNow();
+        MDC.remove(GaussConstants.MDC_TABLE_SHIT_KEY);
+        progressTracer.print(true);
+        if (dataSourceFactory.isStart()) {
+            dataSourceFactory.stop();
+        }
+        MDC.remove(GaussConstants.MDC_TABLE_SHIT_KEY);
+    }
+
+    private RecordExtractor chooseExtractor(TableHolder tableHolder, GaussContext context) {
+        String tablename = tableHolder.table.getName();
+        String fullName = tableHolder.table.getFullName();
+        // 优先找tableName
+        String extractSql = config.getString("gauss.extractor.sql." + tablename);
+        if (StringUtils.isEmpty(extractSql)) {
+            extractSql = config.getString("gauss.extractor.sql." + fullName,
+                config.getString("gauss.extractor.sql"));
+        }
+        if (sourceDbType == DbType.MYSQL) {
+            MysqlOnceFullRecordExtractor recordExtractor = new MysqlOnceFullRecordExtractor(context);
+            recordExtractor.setExtractSql(extractSql);
+            recordExtractor.setTracer(progressTracer);
+            return recordExtractor;
+        } else {
+            throw new GaussException("unsupport " + sourceDbType);
+        }
+    }
+
+    private RecordApplier chooseApplier(GaussContext context) {
+        boolean concurrent = config.getBoolean("gauss.applier.concurrent.enable", true);
+        int threadSize = config.getInt("gauss.applier.concurrent.size", 5);
+        int splitSize = context.getOnceCrawNum() / threadSize;
+        if (splitSize > 100 || splitSize <= 0) {
+            splitSize = 100;
+        }
+        if (concurrent) {
+            return new MultiThreadCheckRecordApplier(context, threadSize, splitSize, applierExecutor);
+        } else {
+            return new CheckRecordApplier(context);
+        }
+    }
+
+
+    private GaussContext buildContext(GaussContext globalContext, Table table) {
+        GaussContext result = globalContext.cloneGlobalContext();
+        result.setTableMeta(table);
+        return result;
+    }
+
+    private GaussContext initGlobalContext() {
+        GaussContext context = new GaussContext();
+        logger.info("check source database connection ...");
+        context.setSourceDs(initDataSource("source"));
+        logger.info("check source database is ok");
+
+        logger.info("check target database connection ...");
+        context.setTargetDs(initDataSource("target"));
+        logger.info("check target database is ok");
+        context.setSourceEncoding(config.getString("gauss.database.source.encode", "UTF-8"));
+        context.setTargetEncoding(config.getString("gauss.database.target.encode", "UTF-8"));
+        context.setOnceCrawNum(config.getInt("gauss.table.onceCrawNum", 200));
+        context.setTpsLimit(config.getInt("gauss.table.tpsLimit", 2000));
+        context.setRunMode(runMode);
+        context.setTablepks(getTablePKs(config.getString("gauss.table.inc.tablepks")));
+        return context;
+    }
+
+    private Map<String, String[]> getTablePKs(String tablepks) {
+        if (StringUtils.isBlank(tablepks)) {
+            return null;
+        } else {
+            Map<String, String[]> tps = new HashMap();
+            String[] tables = tablepks.split("\\|");
+            for (String table : tables) {
+                String[] tablev = table.split("&");
+                String tableName = tablev[0];
+                String[] pks = new String[tablev.length - 1];
+                for (int i = 1; i < tablev.length; i++) {
+                    pks[i - 1] = new String(tablev[i]).toUpperCase().toString();
+                }
+                tps.put(new String(tableName).toUpperCase().toString(), pks);
+            }
+            return tps;
+        }
+    }
+
+    private DataSource initDataSource(String type) {
+        String username = config.getString("gauss.database." + type + ".username");
+        String password = config.getString("gauss.database." + type + ".password");
+        DbType dbType = DbType.valueOf(config.getString("gauss.database." + type + ".type"));
+        String url = config.getString("gauss.database." + type + ".url");
+        String encode = config.getString("gauss.database." + type + ".encode");
+        String poolSize = config.getString("gauss.database." + type + ".poolSize");
+
+        Properties properties = new Properties();
+        if (poolSize != null) {
+            properties.setProperty("maxActive", poolSize);
+        } else {
+            properties.setProperty("maxActive", "200");
+        }
+        if (dbType.isMysql()) {
+            properties.setProperty("characterEncoding", encode);
+        }
+
+        DataSourceConfig dsConfig = new DataSourceConfig(url, username, password, dbType, properties);
+        return dataSourceFactory.getDataSource(dsConfig);
+    }
+
+    private Collection<TableHolder> initTables() {
+        logger.info("check source tables read privileges ...");
+        List tableWhiteList = config.getList("gauss.table.white");
+        List tableBlackList = config.getList("gauss.table.black");
+        boolean isEmpty = true;
+        for (Object table : tableWhiteList) {
+            isEmpty &= StringUtils.isBlank((String) table);
+        }
+
+        List<TableHolder> tables = Lists.newArrayList();
+        DbType targetDbType = GaussUtils.judgeDbType(globalContext.getTargetDs());
+        if (!isEmpty) {
+            for (Object obj : tableWhiteList) {
+                String whiteTable = getTable((String) obj);
+                // 先粗略判断一次
+                if (!isBlackTable(whiteTable, tableBlackList)) {
+                    String[] strs = StringUtils.split(whiteTable, ".");
+                    List<Table> whiteTables = null;
+                    if (strs.length == 1) {
+                        whiteTables = TableMetaGenerator.getTableMetasWithoutColumn(globalContext.getSourceDs(),
+                            strs[0],
+                            null);
+                    } else if (strs.length == 2) {
+                        whiteTables = TableMetaGenerator.getTableMetasWithoutColumn(globalContext.getSourceDs(),
+                            strs[0],
+                            strs[1]);
+                    } else {
+                        throw new GaussException("table[" + whiteTable + "] is not valid");
+                    }
+
+                    if (whiteTables.isEmpty()) {
+                        throw new GaussException("table[" + whiteTable + "] is not found");
+                    }
+
+                    for (Table table : whiteTables) {
+                        // 根据实际表名处理一下
+                        if (!isBlackTable(table.getName(), tableBlackList)
+                            && !isBlackTable(table.getFullName(), tableBlackList)) {
+                            TableMetaGenerator.buildColumns(globalContext.getSourceDs(), table);
+                            TableHolder holder = new TableHolder(table);
+                            if (!tables.contains(holder)) {
+                                tables.add(holder);
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            List<Table> metas = TableMetaGenerator.getTableMetasWithoutColumn(globalContext.getSourceDs(), null, null);
+            for (Table table : metas) {
+                if (!isBlackTable(table.getName(), tableBlackList)
+                    && !isBlackTable(table.getFullName(), tableBlackList)) {
+                    TableMetaGenerator.buildColumns(globalContext.getSourceDs(), table);
+                    TableHolder holder = new TableHolder(table);
+                    if (!tables.contains(holder)) {
+                        tables.add(holder);
+                    }
+                }
+            }
+        }
+
+        logger.info("check source tables is ok.");
+        return tables;
+    }
+
+    private boolean isBlackTable(String table, List tableBlackList) {
+        for (Object tableBlack : tableBlackList) {
+            if (LikeUtil.isMatch((String) tableBlack, table)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    @SuppressWarnings("unused")
+    private boolean isOnlyOnePk(Table table) {
+        return table.getPrimaryKeys() != null && table.getPrimaryKeys().size() == 1;
+    }
+
+    private boolean isOnlyPkIsNumber(Table table) {
+        if (table.getPrimaryKeys() != null && table.getPrimaryKeys().size() == 1) {
+            return GaussUtils.isNumber(table.getPrimaryKeys().get(0).getType());
+        }
+
+        return false;
+    }
+
+    private void processException(Table table, Exception e) {
+        MDC.remove(GaussConstants.MDC_TABLE_SHIT_KEY);
+        abort("process table[" + table.getFullName() + "] has error!", e);
+        System.exit(-1);// 串行时，出错了直接退出jvm
+    }
+
+    private String getTable(String tableName) {
+        String[] paramArray = tableName.split("#");
+        if (paramArray.length >= 1 && !"".equals(paramArray[0])) {
+            return paramArray[0];
+        } else {
+            return null;
+        }
+    }
+
+    private static class TableHolder {
+
+        public TableHolder(Table table){
+            this.table = table;
+        }
+
+        Table          table;
+
+        @Override
+        public int hashCode() {
+            final int prime = 31;
+            int result = 1;
+            result = prime * result + ((table == null) ? 0 : table.hashCode());
+            return result;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) return true;
+            if (obj == null) return false;
+            if (getClass() != obj.getClass()) return false;
+            TableHolder other = (TableHolder) obj;
+            if (table == null) {
+                if (other.table != null) return false;
+            } else if (!table.equals(other.table)) return false;
+            return true;
+        }
+
+    }
+
+    @SuppressWarnings("unused")
+    private void preCheckMlogGrant(DataSource ds) {
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(ds);
+        String mlogName = "migrate" + System.nanoTime();
+        logger.info("check mlog privileges ...");
+        jdbcTemplate.execute("CREATE MATERIALIZED VIEW " + mlogName + " AS SELECT SYSDATE FROM DUAL");
+        jdbcTemplate.execute("DROP MATERIALIZED VIEW " + mlogName);
+        logger.info("check mlog privileges is ok");
+    }
+}
