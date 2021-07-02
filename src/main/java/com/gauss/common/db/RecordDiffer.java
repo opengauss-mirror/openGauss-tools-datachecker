@@ -46,23 +46,6 @@ public class RecordDiffer {
                 "record not found"));
             return;
         }
-
-        StringBuilder diff = new StringBuilder();
-        boolean same = true;
-        int size = record1.getColumns().size();
-
-        for (int i = 0; i < size; i++) {
-            ColumnValue column = record1.getColumns().get(i);
-            same &= compareOneColumn(column, getColumn(record2, column.getColumn().getName()), diff);
-        }
-
-        if (!same) {
-            GaussUtils.outputUnnormal(record1.getSchemaName()+"."+record1.getTableName());
-            diffLogger.info(diffMessage(record1.getSchemaName(),
-                record1.getTableName(),
-                record1.getPrimaryKeys(),
-                diff.toString()));
-        }
     }
 
     private static boolean compareOneColumn(ColumnValue column1, ColumnValue column2, StringBuilder diff) {

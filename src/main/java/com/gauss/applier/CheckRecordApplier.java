@@ -115,9 +115,6 @@ public class CheckRecordApplier extends AbstractRecordApplier {
             public Object doInPreparedStatement(PreparedStatement ps) throws SQLException, DataAccessException {
                 List<Record> result = Lists.newArrayList();
                 for (int i = 0;i < records.size();i++) {
-                    if (i > 0 && records.get(i-1).equals(records.get(i))) {
-                        continue;
-                    }
                     for (ColumnValue col : records.get(i).getColumns()) {
                         Integer index = getIndex(indexs, col, true);
                         if (index != null) {
