@@ -1,4 +1,4 @@
-package com.gauss.extractor.mysql;
+package com.gauss.extractor.db;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -8,10 +8,10 @@ import com.gauss.common.db.meta.ColumnValue;
 import com.gauss.common.utils.GaussUtils;
 import com.gauss.extractor.AbstractRecordExtractor;
 
-public abstract class AbstractMysqlRecordExtractor extends AbstractRecordExtractor {
+public abstract class AbstractDbRecordExtractor extends AbstractRecordExtractor {
 
     /**
-     * 从mysql的resultset中得到value
+     * 从resultset中得到value
      */
     public ColumnValue getColumnValue(ResultSet rs, String encoding, ColumnMeta col) throws SQLException {
         Object value = null;

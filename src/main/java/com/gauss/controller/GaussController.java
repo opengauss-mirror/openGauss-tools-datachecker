@@ -1,8 +1,5 @@
 package com.gauss.controller;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -13,16 +10,14 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-
 import javax.sql.DataSource;
 
 import org.apache.commons.configuration.Configuration;
-import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang.BooleanUtils;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.MDC;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import com.gauss.extractor.db.DbOnceFullRecordExtractor;
 import com.google.common.collect.Lists;
 import com.gauss.applier.CheckRecordApplier;
 import com.gauss.applier.MultiThreadCheckRecordApplier;
@@ -44,7 +39,7 @@ import com.gauss.common.utils.GaussUtils;
 import com.gauss.common.utils.thread.NamedThreadFactory;
 import com.gauss.exception.GaussException;
 import com.gauss.extractor.RecordExtractor;
-import com.gauss.extractor.mysql.MysqlOnceFullRecordExtractor;
+import com.gauss.extractor.db.DbOnceFullRecordExtractor;
 
 /**
  * 整个校验流程调度控制
@@ -240,7 +235,12 @@ public class GaussController extends AbstractGaussLifeCycle {
                 config.getString("gauss.extractor.sql"));
         }
         if (sourceDbType == DbType.MYSQL) {
-            MysqlOnceFullRecordExtractor recordExtractor = new MysqlOnceFullRecordExtractor(context);
+            DbOnceFullRecordExtractor recordExtractor = new DbOnceFullRecordExtractor(context, DbType.MYSQL);
+            recordExtractor.setExtractSql(extractSql);
+            recordExtractor.setTracer(progressTracer);
+            return recordExtractor;
+        } else if (sourceDbType == DbType.ORACLE){
+            DbOnceFullRecordExtractor recordExtractor = new DbOnceFullRecordExtractor(context, DbType.ORACLE);
             recordExtractor.setExtractSql(extractSql);
             recordExtractor.setTracer(progressTracer);
             return recordExtractor;

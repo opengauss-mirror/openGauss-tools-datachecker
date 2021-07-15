@@ -1,4 +1,4 @@
-package com.gauss.extractor.mysql;
+package com.gauss.extractor.db;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -13,7 +13,9 @@ import org.apache.commons.lang.StringUtils;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.StatementCallback;
 
+import com.gauss.common.model.DbType;
 import com.google.common.collect.Lists;
 import com.gauss.common.db.meta.ColumnMeta;
 import com.gauss.common.db.meta.ColumnValue;
@@ -26,18 +28,20 @@ import com.gauss.common.utils.thread.NamedThreadFactory;
 import com.gauss.exception.GaussException;
 
 /**
- * 基于mysql的一次性任务
+ * 一次性提取数据
  */
-public class MysqlOnceFullRecordExtractor extends AbstractMysqlRecordExtractor {
+public class DbOnceFullRecordExtractor extends AbstractDbRecordExtractor {
 
     private static final String         FORMAT          = "select /*+parallel(t)*/ {0} from {1}.{2} t";
     private StringBuffer                      extractSql;
     private LinkedBlockingQueue<Record> queue;
     private Thread                      extractorThread = null;
     private GaussContext               context;
+    private DbType                      dbType;
 
-    public MysqlOnceFullRecordExtractor(GaussContext context){
+    public DbOnceFullRecordExtractor(GaussContext context, DbType dbType){
         this.context = context;
+        this.dbType = dbType;
     }
 
     public void start() {
@@ -50,8 +54,16 @@ public class MysqlOnceFullRecordExtractor extends AbstractMysqlRecordExtractor {
         }
 
         // 启动异步线程
-        extractorThread = new NamedThreadFactory(this.getClass().getSimpleName() + "-"
-                                                 + context.getTableMeta().getFullName()).newThread(new ContinueExtractor(context));
+        if (dbType == DbType.ORACLE) {
+            //Oracle
+            extractorThread = new NamedThreadFactory(this.getClass().getSimpleName() + "-"
+                + context.getTableMeta().getFullName()).newThread(new OracleContinueExtractor(context));
+        } else {
+            //Mysql
+            extractorThread = new NamedThreadFactory(this.getClass().getSimpleName() + "-"
+                + context.getTableMeta().getFullName()).newThread(new MysqlContinueExtractor(context));
+        }
+
         extractorThread.start();
 
         queue = new LinkedBlockingQueue<Record>(context.getOnceCrawNum() * 2);
@@ -88,18 +100,17 @@ public class MysqlOnceFullRecordExtractor extends AbstractMysqlRecordExtractor {
             } else {
                 // 没去到数据
                 i--;
-                continue;
             }
         }
 
         return records;
     }
 
-    public class ContinueExtractor implements Runnable {
+    public class MysqlContinueExtractor implements Runnable {
 
         private JdbcTemplate jdbcTemplate;
 
-        public ContinueExtractor(GaussContext context){
+        public MysqlContinueExtractor(GaussContext context){
             jdbcTemplate = new JdbcTemplate(context.getSourceDs());
         }
 
@@ -141,6 +152,56 @@ public class MysqlOnceFullRecordExtractor extends AbstractMysqlRecordExtractor {
                     setStatus(ExtractStatus.TABLE_END);
                     rs.close();
                     stmt.close();
+                    return null;
+                }
+            });
+
+        }
+    }
+
+    public class OracleContinueExtractor implements Runnable {
+
+        private JdbcTemplate jdbcTemplate;
+
+        public OracleContinueExtractor(GaussContext context){
+            jdbcTemplate = new JdbcTemplate(context.getSourceDs());
+        }
+
+        public void run() {
+            jdbcTemplate.execute(new StatementCallback() {
+
+                public Object doInStatement(Statement stmt) throws SQLException, DataAccessException {
+                    stmt.setFetchSize(200);
+                    stmt.execute(extractSql.toString());
+                    ResultSet rs = stmt.getResultSet();
+                    while (rs.next()) {
+                        List<ColumnValue> cms = new ArrayList<ColumnValue>();
+                        List<ColumnValue> pks = new ArrayList<ColumnValue>();
+
+                        for (ColumnMeta pk : context.getTableMeta().getPrimaryKeys()) {
+                            ColumnValue cv = getColumnValue(rs, context.getSourceEncoding(), pk);
+                            pks.add(cv);
+                        }
+
+                        for (ColumnMeta col : context.getTableMeta().getColumns()) {
+                            ColumnValue cv = getColumnValue(rs, context.getSourceEncoding(), col);
+                            cms.add(cv);
+                        }
+
+                        Record re = new Record(context.getTableMeta().getSchema(),
+                            context.getTableMeta().getName(),
+                            pks,
+                            cms);
+                        try {
+                            queue.put(re);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt(); // 传递
+                            throw new GaussException(e);
+                        }
+                    }
+
+                    setStatus(ExtractStatus.TABLE_END);
+                    rs.close();
                     return null;
                 }
             });

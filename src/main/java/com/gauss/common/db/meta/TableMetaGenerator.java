@@ -157,11 +157,22 @@ public class TableMetaGenerator {
                 Table table = null;
                 Statement stmt = conn.createStatement();
                 StringBuffer query;
-                if (StringUtils.isEmpty(tableName)) {
-                    // 忽略系统表
-                    query = new StringBuffer("select TABLE_SCHEMA, TABLE_NAME from information_schema.tables where table_schema='"+sName+"' and table_type= 'BASE TABLE'");
+                if (StringUtils.startsWithIgnoreCase(databaseName, "oracle")) {
+                    //Oracle
+                    if (StringUtils.isEmpty(tableName)) {
+                        // 忽略系统表
+                        query = new StringBuffer("SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') AS SCHEMA_NAME , TABLE_NAME FROM USER_TABLES T , USER_USERS U WHERE U.USERNAME = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')");
+                    } else {
+                        query = new StringBuffer("SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') AS SCHEMA_NAME , TABLE_NAME FROM USER_TABLES T , USER_USERS U WHERE T.TABLE_NAME ='" + tName.toUpperCase() + "'");
+                    }
                 } else {
-                    query = new StringBuffer("select TABLE_SCHEMA, TABLE_NAME from information_schema.tables where table_schema='"+sName+"' and table_name='"+tName+"'");
+                    //Mysql
+                    if (StringUtils.isEmpty(tableName)) {
+                        // 忽略系统表
+                        query = new StringBuffer("select TABLE_SCHEMA, TABLE_NAME from information_schema.tables where table_schema='"+sName+"' and table_type= 'BASE TABLE'");
+                    } else {
+                        query = new StringBuffer("select TABLE_SCHEMA, TABLE_NAME from information_schema.tables where table_schema='"+sName+"' and table_name='"+tName+"'");
+                    }
                 }
                 rs = stmt.executeQuery(query.toString());
                 while (rs.next()) {
