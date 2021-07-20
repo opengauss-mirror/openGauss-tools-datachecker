@@ -13,7 +13,7 @@ public enum DbType {
     /**
      * oracle DB
      */
-    ORACLE("oracle.jdbc.driver.OracleDriver"), SqlServer("com.microsoft.sqlserver.jdbc.SQLServerDriver");
+    ORACLE("oracle.jdbc.driver.OracleDriver");
 
     private String driver;
 
