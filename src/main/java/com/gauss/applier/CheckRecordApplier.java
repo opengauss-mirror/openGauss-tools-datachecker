@@ -118,7 +118,7 @@ public class CheckRecordApplier extends AbstractRecordApplier {
                     for (ColumnValue col : records.get(i).getColumns()) {
                         Integer index = getIndex(indexs, col, true);
                         if (index != null) {
-                            ps.setObject(index, col.getValue(), col.getColumn().getType());
+                            ps.setObject(index, col.getValue());
                         }
                     }
                     ResultSet rs = ps.executeQuery();
