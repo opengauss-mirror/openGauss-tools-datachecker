@@ -7,9 +7,6 @@ import org.apache.commons.lang.builder.ToStringBuilder;
 
 import com.gauss.common.utils.GaussToStringStyle;
 
-/**
- * 数据介质源信息描述
- */
 public class DataSourceConfig implements Serializable {
 
     private static final long serialVersionUID = -7653632703273608373L;

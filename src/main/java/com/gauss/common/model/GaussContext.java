@@ -7,26 +7,23 @@ import javax.sql.DataSource;
 
 import com.gauss.common.db.meta.Table;
 
-/**
- * Gauss数据处理上下文
- */
 public class GaussContext {
 
-    // 具体的表
-    private Table                 tableMeta;                           // 对应的meta
+    private Table tableMeta;
 
-    // 全局共享
-    private RunMode               runMode;
-    private int                   onceCrawNum;                         // 每次提取的记录数
-    private int                   tpsLimit             = 0;            // <=0代表不限制
-    private DataSource            sourceDs;                            // 源数据库链接
-    private DataSource            targetDs;                            // 目标数据库链接
-    private String                sourceEncoding       = "UTF-8";
-    private String                targetEncoding       = "UTF-8";
+    private int onceCrawNum;             // the number of records in one batch
 
-    private Map<String, String[]> tablepks             = new HashMap();
+    private int tpsLimit = 0;            // <=0 means there is no limit
 
-    // 实时同步时指定的判断字段
+    private DataSource sourceDs;         // connection of source database
+
+    private DataSource targetDs;         // connection of target database
+
+    private String sourceEncoding = "UTF-8";
+
+    private String targetEncoding = "UTF-8";
+
+    private Map<String, String[]> tablepks = new HashMap();
 
     public Map<String, String[]> getTablepks() {
         return tablepks;
@@ -39,7 +36,7 @@ public class GaussContext {
     public int getOnceCrawNum() {
         return onceCrawNum;
     }
-    
+
     public void setOnceCrawNum(int onceCrawNum) {
         this.onceCrawNum = onceCrawNum;
     }
@@ -92,17 +89,8 @@ public class GaussContext {
         this.tpsLimit = tpsLimit;
     }
 
-    public RunMode getRunMode() {
-        return runMode;
-    }
-
-    public void setRunMode(RunMode runMode) {
-        this.runMode = runMode;
-    }
-
     public GaussContext cloneGlobalContext() {
         GaussContext context = new GaussContext();
-        context.setRunMode(runMode);
         context.setSourceDs(sourceDs);
         context.setTargetDs(targetDs);
         context.setSourceEncoding(sourceEncoding);

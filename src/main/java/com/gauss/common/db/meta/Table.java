@@ -9,7 +9,7 @@ import com.google.common.collect.Lists;
 import com.gauss.common.utils.GaussToStringStyle;
 
 /**
- * 代表一张数据表
+ * represent one table
  */
 public class Table {
 

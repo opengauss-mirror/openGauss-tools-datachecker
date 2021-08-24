@@ -158,10 +158,8 @@ public class GaussUtils {
             System.out.println("\n The tables which match failed : \n\n");
             logger.info("The tables which match failed : \n\n");
         }
-        if (!unnormal.contains(tableStr)) {
-            logger.info(tableStr +"\n");
-            System.out.println(tableStr +"\n");
-            unnormal.add(tableStr);
-        }
+        logger.info(tableStr +"\n");
+        System.out.println(tableStr +"\n");
+        unnormal.add(tableStr);
     }
 }

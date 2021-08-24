@@ -1,22 +1,20 @@
-package com.gauss.extractor;
+package com.gauss.preparer;
 
 import lombok.Getter;
 import lombok.Setter;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import com.gauss.common.lifecycle.AbstractGaussLifeCycle;
-import com.gauss.common.model.ExtractStatus;
+import com.gauss.common.model.PrepareStatus;
 import com.gauss.common.stats.ProgressTracer;
 
-public abstract class AbstractRecordExtractor extends AbstractGaussLifeCycle implements RecordExtractor {
-
+public abstract class AbstractRecordPreparer extends AbstractGaussLifeCycle{
     protected final Logger           logger = LoggerFactory.getLogger(this.getClass());
 
     @Getter
     @Setter
-    protected volatile ExtractStatus status = ExtractStatus.NORMAL;
+    protected volatile PrepareStatus status = PrepareStatus.BEGIN;
 
     @Getter
     @Setter
