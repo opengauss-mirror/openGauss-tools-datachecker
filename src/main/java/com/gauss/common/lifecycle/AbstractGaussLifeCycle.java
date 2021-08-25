@@ -3,9 +3,6 @@ package com.gauss.common.lifecycle;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * 基本实现
- */
 public abstract class AbstractGaussLifeCycle implements GaussLifeCycle {
 
     protected final Logger     logger  = LoggerFactory.getLogger(this.getClass());

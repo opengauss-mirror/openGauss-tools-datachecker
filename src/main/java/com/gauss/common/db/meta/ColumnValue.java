@@ -1,7 +1,7 @@
 package com.gauss.common.db.meta;
 
 /**
- * 代表一个具体字段的value
+ * represent the value on every column
  */
 public class ColumnValue {
 

@@ -5,7 +5,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.Semaphore;
 
 /**
- * 简单利用信号量控制table并发数
+ * control the concurrency between tables
  */
 public class TableController {
 

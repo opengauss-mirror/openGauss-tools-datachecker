@@ -6,7 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 统计每个批次的运行信息
+ * running information of every batch
  */
 public class StatAggregation {
 

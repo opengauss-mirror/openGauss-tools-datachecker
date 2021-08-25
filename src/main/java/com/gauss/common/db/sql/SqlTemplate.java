@@ -1,125 +1,144 @@
 package com.gauss.common.db.sql;
 
+import com.gauss.common.db.meta.ColumnMeta;
+import com.gauss.common.model.DbType;
+import com.gauss.common.model.GaussContext;
+
+import java.sql.Types;
+import java.util.ArrayList;
 import java.util.List;
 
-import com.gauss.common.db.meta.ColumnMeta;
-
 /**
- * sql构造
+ * sql template
  */
 public class SqlTemplate {
+    private DbType dbType;
 
-    private static final String DOT = ".";
+    private String orinTableName;
 
-    /**
-     * 根据字段的列表顺序，拼写以 col1,col2,col3,....
-     */
-    public String makeColumn(List<ColumnMeta> columns) {
-        StringBuilder str = new StringBuilder();
-        int size = columns.size();
-        for (int i = 0; i < size; i++) {
-            str.append(getColumnName(columns.get(i)));
-            if (i < (size - 1)) {
-                str.append(",");
+    private String CompareTableName;
+
+    private GaussContext context;
+
+    public SqlTemplate(DbType dbType, GaussContext context) {
+        this.context = context;
+        this.dbType = dbType;
+        this.orinTableName = context.getTableMeta().getFullName();
+        this.CompareTableName = orinTableName + "_dataChecker";
+    }
+
+    public String getOracleMd5() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("lower(utl_raw.cast_to_raw(dbms_obfuscation_toolkit.md5(input_string=>");
+        List<ColumnMeta> columns =  context.getTableMeta().getColumns();
+        for (ColumnMeta meta : columns) {
+            switch (meta.getType()) {
+                case Types.FLOAT:
+                case Types.DOUBLE:
+                    sb.append("round(").append(meta.getName()).append(", 10)");
+                    break;
+                default:
+                    sb.append(meta.getName());
             }
+            sb.append(" || '_' || ");
         }
-        return str.toString();
-    }
-
-    /**
-     * 根据字段列表，拼写column >= ? and column < ?
-     */
-    public String makeRange(ColumnMeta column) {
-        return makeRange(column.getName());
-    }
-
-    /**
-     * 根据字段列表，拼写 column >= ? and column < ?
-     */
-    public String makeRange(String columnName) {
-        StringBuilder sb = new StringBuilder("");
-        sb.append(getColumnName(columnName));
-        sb.append(" >= ? and ");
-        sb.append(getColumnName(columnName));
-        sb.append(" <= ?");
+        int length = sb.length();
+        sb.delete(length-11,length);
+        sb.append("))) ");
         return sb.toString();
     }
 
-    /**
-     * 根据字段名和参数个数，拼写 column in (?,?,...) 字符串
-     */
-    public String makeIn(ColumnMeta column, int size) {
-        return makeIn(column.getName(), size);
+    public String getMysqlMd5() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("md5(concat_ws('_',");
+        List<ColumnMeta> columns = context.getTableMeta().getColumns();
+        for (ColumnMeta meta : columns) {
+            switch (meta.getType()) {
+                case Types.FLOAT:
+                case Types.DOUBLE:
+                    sb.append("round(").append(meta.getName()).append(", 10)");
+                    break;
+                case Types.BINARY:
+                    sb.append("lower(hex(").append(meta.getName()).append("))");
+                    break;
+                default:
+                    sb.append(meta.getName());
+            }
+            sb.append(",");
+        }
+        sb.deleteCharAt(sb.length() - 1);
+        sb.append("))");
+        return sb.toString();
     }
 
-    /**
-     * 根据字段名和参数个数，拼写 column in (?,?,...) 字符串
-     */
-    public String makeIn(String columnName, int size) {
-        StringBuilder sb = new StringBuilder("");
-        sb.append(getColumnName(columnName));
-        sb.append(" in (");
-        for (int i = 0; i < size; i++) {
-            sb.append("?");
-            if (i != (size - 1)) {
-                sb.append(",");
+    public String getOpgsMd5() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("md5(");
+        List<ColumnMeta> columns = context.getTableMeta().getColumns();
+        for (ColumnMeta meta : columns) {
+            switch (meta.getType()) {
+                case Types.BOOLEAN:
+                    sb.append("cast(").append(meta.getName()).append(" as int");
+                    break;
+                case Types.FLOAT:
+                    //same as double
+                case Types.DOUBLE:
+                    sb.append("round(").append(meta.getName()).append("::numeric, 10)");
+                    break;
+                case Types.BINARY:
+                    sb.append("substring(cast(").append(meta.getName()).append(" as varchar) from 3)");
+                    break;
+                default:
+                    sb.append(meta.getName());
             }
+            sb.append(" || '_' || ");
         }
+        int length = sb.length();
+        sb.delete(length-11,length);
         sb.append(")");
         return sb.toString();
     }
 
-    public String getSelectSql(String schemaName, String tableName, String[] pkNames, String[] colNames) {
-        StringBuilder sql = new StringBuilder();
-        sql.append("select ");
-        String[] allColumns = buildAllColumns(pkNames, colNames);
-        int size = allColumns.length;
-        for (int i = 0; i < size; i++) {
-            sql.append(getColumnName(allColumns[i])).append(splitCommea(size, i));
-        }
+    public String getPrepareSql() {
+        String res = "insert into " + CompareTableName + "B select " + getOpgsMd5() + " from " + orinTableName + ";";
+        return res;
+    }
 
-        sql.append(" from ").append(makeFullName(schemaName, tableName)).append(" where ( ");
-        if (pkNames.length > 0) { // 可能没有主键
-            makeColumnEquals(sql, pkNames, "and");
+    public String getExtractSql() {
+        String res = "select ";
+        if (dbType == DbType.MYSQL) {
+            res += getMysqlMd5();
+        } else if (dbType == DbType.ORACLE) {
+            res += getOracleMd5();
         } else {
-            makeColumnEquals(sql, colNames, "and");
+            //todo
+            res = "";
         }
-        sql.append(" ) ");
-        return sql.toString().intern();
+        res += " from " + orinTableName;
+        return res;
     }
 
-    protected String makeFullName(String schemaName, String tableName) {
-        String full = schemaName + DOT + tableName;
-        return full.intern();
+    public String getCompareSql() {
+        return "select * from " + CompareTableName + "A t1 full join " + CompareTableName
+            + "B t2 on t1.checksumA=t2.checksumB where t2.checksumB is null or t1.checksumA is null;";
     }
 
-    protected void makeColumnEquals(StringBuilder sql, String[] columns, String separator) {
-        int size = columns.length;
-        for (int i = 0; i < size; i++) {
-            sql.append(" ").append(getColumnName(columns[i])).append(" = ").append("? ");
-            if (i != size - 1) {
-                sql.append(separator);
-            }
+    public String getSearchSql(ArrayList<String> md5list) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("select * from ").append(orinTableName).append(" where ");
+        if (dbType == DbType.MYSQL) {
+            sb.append(getMysqlMd5());
+        } else if (dbType == DbType.ORACLE) {
+            sb.append(getOracleMd5());
+        } else {
+            //todo
         }
+        sb.append(" in (");
+        for (String str : md5list) {
+            sb.append("'").append(str).append("',");
+        }
+        sb.deleteCharAt(sb.length() - 1);
+        sb.append(")");
+        return sb.toString();
     }
-
-    protected String getColumnName(String columName) {
-        return columName;
-    }
-
-    protected String getColumnName(ColumnMeta column) {
-        return column.getName();
-    }
-
-    protected String splitCommea(int size, int i) {
-        return (i + 1 < size) ? " , " : "";
-    }
-
-    protected String[] buildAllColumns(String[] pkNames, String[] colNames) {
-        String[] allColumns = new String[pkNames.length + colNames.length];
-        System.arraycopy(colNames, 0, allColumns, 0, colNames.length);
-        System.arraycopy(pkNames, 0, allColumns, colNames.length, pkNames.length);
-        return allColumns;
-    }
-
 }

@@ -6,17 +6,14 @@ import java.util.Date;
 import java.util.List;
 
 import org.apache.commons.lang.ObjectUtils;
-import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.SystemUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.util.CollectionUtils;
 
 import com.gauss.common.db.meta.ColumnValue;
-import com.gauss.common.model.record.Record;
 
 /**
- * 记录一下校验过程中的record数据
+ * record the data which have been checked
  */
 public class RecordDumper {
 
@@ -44,7 +41,7 @@ public class RecordDumper {
         record_format += "---END" + SEP;
     }
 
-    public static void dumpExtractorInfo(Long batchId, List<Record> records, boolean dumpDetail) {
+    public static void dumpExtractorInfo(Long batchId, List<String> records) {
         extractorLogger.info(SEP + "****************************************************" + SEP);
         Date now = new Date();
         SimpleDateFormat format = new SimpleDateFormat(TIMESTAMP_FORMAT);
@@ -53,13 +50,9 @@ public class RecordDumper {
             records.size(),
             format.format(now)));
         extractorLogger.info("****************************************************" + SEP);
-        if (dumpDetail) {// 判断一下是否需要打印详细信息
-            extractorLogger.info(dumpRecords(records));
-            extractorLogger.info("****************************************************" + SEP);
-        }
     }
 
-    public static void dumpApplierInfo(Long batchId, List<Record> extractorRecords, List<Record> applierRecords,boolean dumpDetail) {
+    public static void dumpApplierInfo(Long batchId, List<String> extractorRecords, List<String> applierRecords) {
         applierLogger.info(SEP + "****************************************************" + SEP);
         Date now = new Date();
         SimpleDateFormat format = new SimpleDateFormat(TIMESTAMP_FORMAT);
@@ -69,31 +62,6 @@ public class RecordDumper {
             applierRecords.size(),
             format.format(now)));
         applierLogger.info("****************************************************" + SEP);
-        if (dumpDetail) {// 判断一下是否需要打印详细信息，目前只打印applier信息，分开打印
-            applierLogger.info(dumpRecords(applierRecords));
-            applierLogger.info("****************************************************" + SEP);
-        }
-    }
-
-    public static String dumpRecords(List<Record> records) {
-        if (CollectionUtils.isEmpty(records)) {
-            return StringUtils.EMPTY;
-        }
-
-        // 预先设定容量大小
-        StringBuilder builder = new StringBuilder(record_default_capacity * records.size());
-        for (Record record : records) {
-            builder.append(dumpRecord(record));
-        }
-        return builder.toString();
-    }
-
-    public static String dumpRecord(Record record) {
-        return MessageFormat.format(record_format,
-            record.getSchemaName(),
-            record.getTableName(),
-            dumpRecordColumns(record.getPrimaryKeys()),
-            dumpRecordColumns(record.getColumns()));
     }
 
     public static String dumpRecordColumns(List<ColumnValue> columns) {

@@ -18,7 +18,7 @@ import com.gauss.common.model.DbType;
 import com.gauss.exception.GaussException;
 
 /**
- * 获取数据库连接
+ * get database connection
  */
 public class DataSourceFactory extends AbstractGaussLifeCycle implements GaussLifeCycle {
 
@@ -81,7 +81,7 @@ public class DataSourceFactory extends AbstractGaussLifeCycle implements GaussLi
             dataSource.setMaxActive(maxActive);
             dataSource.setMaxWait(maxWait);
             dataSource.setDriverClassName(dbType.getDriver());
-            // 动态的参数
+
             if (props != null && props.size() > 0) {
                 for (Map.Entry<Object, Object> entry : props.entrySet()) {
                     dataSource.addConnectionProperty(String.valueOf(entry.getKey()), String.valueOf(entry.getValue()));

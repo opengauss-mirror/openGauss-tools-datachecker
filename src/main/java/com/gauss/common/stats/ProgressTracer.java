@@ -9,10 +9,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.gauss.common.model.ProgressStatus;
-import com.gauss.common.model.RunMode;
 
 /**
- * 统计下当前各表的状态
+ * trace the state of every table
  */
 public class ProgressTracer {
 
@@ -20,11 +19,9 @@ public class ProgressTracer {
     private static final String         CHECK_FORMAT = "{未启动:%s,对比中:%s,已完成:%s,异常数:%s}";
 
     private int                         total;
-    private RunMode                     mode;
     private Map<String, ProgressStatus> status       = new ConcurrentHashMap<String, ProgressStatus>();
 
-    public ProgressTracer(RunMode mode, int total){
-        this.mode = mode;
+    public ProgressTracer(int total){
         this.total = total;
     }
 
@@ -74,9 +71,7 @@ public class ProgressTracer {
         logger.info("{}", msg);
         if (detail) {
             if (fulling > 0) {
-                if (mode == RunMode.CHECK) {
-                    logger.info("对比中:" + fullingTables);
-                }
+                logger.info("对比中:" + fullingTables);
             }
             if (failed > 0) {
                 logger.info("异常数:" + failedTables);

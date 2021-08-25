@@ -7,16 +7,14 @@ import com.gauss.common.model.ExtractStatus;
 import com.gauss.common.model.record.Record;
 import com.gauss.exception.GaussException;
 
+import lombok.Getter;
+import lombok.Setter;
+
 /**
- * 数据获取
+ * extract data
  */
 public interface RecordExtractor extends GaussLifeCycle {
 
-    public List<Record> extract() throws GaussException;
-
-    /**
-     * @return 当前extractor的状态,{@linkplain ExtractStatus}
-     */
-    public ExtractStatus status();
-
+    public List<String> extract() throws GaussException;
+    public ExtractStatus getStatus();
 }

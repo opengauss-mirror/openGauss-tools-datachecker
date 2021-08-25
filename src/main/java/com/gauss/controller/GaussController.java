@@ -10,6 +10,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+
 import javax.sql.DataSource;
 
 import org.apache.commons.configuration.Configuration;
@@ -17,20 +18,20 @@ import org.apache.commons.lang.StringUtils;
 import org.slf4j.MDC;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import com.gauss.comparer.GaussRecordComparer;
 import com.gauss.extractor.db.DbOnceFullRecordExtractor;
+import com.gauss.preparer.GaussRecordPreparer;
 import com.google.common.collect.Lists;
 import com.gauss.applier.CheckRecordApplier;
 import com.gauss.applier.MultiThreadCheckRecordApplier;
 import com.gauss.applier.RecordApplier;
 import com.gauss.common.GaussConstants;
 import com.gauss.common.db.DataSourceFactory;
-import com.gauss.common.db.meta.ColumnMeta;
 import com.gauss.common.db.meta.Table;
 import com.gauss.common.db.meta.TableMetaGenerator;
 import com.gauss.common.lifecycle.AbstractGaussLifeCycle;
 import com.gauss.common.model.DataSourceConfig;
 import com.gauss.common.model.DbType;
-import com.gauss.common.model.RunMode;
 import com.gauss.common.model.GaussContext;
 import com.gauss.common.stats.ProgressTracer;
 import com.gauss.common.stats.StatAggregation;
@@ -39,30 +40,38 @@ import com.gauss.common.utils.GaussUtils;
 import com.gauss.common.utils.thread.NamedThreadFactory;
 import com.gauss.exception.GaussException;
 import com.gauss.extractor.RecordExtractor;
-import com.gauss.extractor.db.DbOnceFullRecordExtractor;
 
 /**
- * 整个校验流程调度控制
+ * the controller of the whole process
  */
 public class GaussController extends AbstractGaussLifeCycle {
 
-    private DataSourceFactory        dataSourceFactory = new DataSourceFactory();
-    private Configuration            config;
+    private DataSourceFactory dataSourceFactory = new DataSourceFactory();
 
-    private RunMode                  runMode;
-    private GaussContext            globalContext;
-    private DbType                   sourceDbType      = DbType.MYSQL;
-    private DbType                   targetDbType      = DbType.OPGS;
+    private Configuration config;
 
-    private TableController          tableController;
-    private ProgressTracer           progressTracer;
-    private List<GaussInstance>     instances         = Lists.newArrayList();
+    private GaussContext globalContext;
+
+    private DbType sourceDbType = DbType.MYSQL;
+
+    private DbType targetDbType = DbType.OPGS;
+
+    int query_dop;
+
+    private TableController tableController;
+
+    private ProgressTracer progressTracer;
+
+    private List<GaussInstance> instances = Lists.newArrayList();
+
     private ScheduledExecutorService schedule;
-    // 全局的工作线程池
-    private ThreadPoolExecutor       extractorExecutor = null;
-    private ThreadPoolExecutor       applierExecutor   = null;
 
-    public GaussController(Configuration config){
+    // global thread pool
+    private ThreadPoolExecutor extractorExecutor = null;
+
+    private ThreadPoolExecutor applierExecutor = null;
+
+    public GaussController(Configuration config) {
         this.config = config;
     }
 
@@ -74,32 +83,25 @@ public class GaussController extends AbstractGaussLifeCycle {
             dataSourceFactory.start();
         }
 
-        String mode = config.getString("gauss.table.mode");
-        if (StringUtils.isEmpty(mode)) {
-            throw new GaussException("gauss.table.mode should not be empty");
-        }
-        this.runMode = RunMode.valueOf(mode);
         this.sourceDbType = DbType.valueOf(StringUtils.upperCase(config.getString("gauss.database.source.type")));
         this.targetDbType = DbType.valueOf(StringUtils.upperCase(config.getString("gauss.database.target.type")));
         this.globalContext = initGlobalContext();
 
-        boolean extractorDump = config.getBoolean("gauss.extractor.dump", true);
-        boolean applierDump = config.getBoolean("gauss.applier.dump", true);
-
         int statBufferSize = config.getInt("gauss.stat.buffer.size", 16384);
         int statPrintInterval = config.getInt("gauss.stat.print.interval", 5);
-        // 是否并行执行concurrent
+        query_dop = config.getInt("gauss.table.query_dop", 8);
+
+        // enable concurrent
         boolean concurrent = config.getBoolean("gauss.table.concurrent.enable", false);
 
         Collection<TableHolder> tableMetas = initTables();
         int threadSize = 1; // 默认1，代表串行
         if (concurrent) {
             threadSize = config.getInt("gauss.table.concurrent.size", 5); // 并行执行的table数
-
         }
 
         tableController = new TableController(tableMetas.size(), threadSize);
-        progressTracer = new ProgressTracer(runMode, tableMetas.size());
+        progressTracer = new ProgressTracer(tableMetas.size());
         int retryTimes = config.getInt("gauss.table.retry.times", 3);
         int retryInterval = config.getInt("gauss.table.retry.interval", 1000);
 
@@ -112,36 +114,28 @@ public class GaussController extends AbstractGaussLifeCycle {
         boolean useApplierExecutor = config.getBoolean("gauss.applier.concurrent.global", false);
         if (useExtractorExecutor) {
             int extractorSize = config.getInt("gauss.extractor.concurrent.size", 300);
-            extractorExecutor = new ThreadPoolExecutor(extractorSize,
-                extractorSize,
-                60,
-                TimeUnit.SECONDS,
-                new ArrayBlockingQueue<Runnable>(extractorSize * 2),
-                new NamedThreadFactory("Global-Extractor"),
+            extractorExecutor = new ThreadPoolExecutor(extractorSize, extractorSize, 60, TimeUnit.SECONDS,
+                new ArrayBlockingQueue<Runnable>(extractorSize * 2), new NamedThreadFactory("Global-Extractor"),
                 new ThreadPoolExecutor.CallerRunsPolicy());
         }
 
         if (useApplierExecutor) {
             int applierSize = config.getInt("gauss.applier.concurrent.size", 500);
-            applierExecutor = new ThreadPoolExecutor(applierSize,
-                applierSize,
-                60,
-                TimeUnit.SECONDS,
-                new ArrayBlockingQueue<Runnable>(applierSize * 2),
-                new NamedThreadFactory("Global-Applier"),
+            applierExecutor = new ThreadPoolExecutor(applierSize, applierSize, 60, TimeUnit.SECONDS,
+                new ArrayBlockingQueue<Runnable>(applierSize * 2), new NamedThreadFactory("Global-Applier"),
                 new ThreadPoolExecutor.CallerRunsPolicy());
         }
         for (TableHolder tableHolder : tableMetas) {
             GaussContext context = buildContext(globalContext, tableHolder.table);
-            RecordExtractor extractor = chooseExtractor(tableHolder, context);
+            RecordExtractor extractor = chooseExtractor(context);
             RecordApplier applier = chooseApplier(context);
             GaussInstance instance = new GaussInstance(context);
             StatAggregation statAggregation = new StatAggregation(statBufferSize, statPrintInterval);
+            instance.setPreparer(new GaussRecordPreparer(context,query_dop));
             instance.setExtractor(extractor);
             instance.setApplier(applier);
+            instance.setComparer(new GaussRecordComparer(sourceDbType, context, query_dop));
             instance.setTableController(tableController);
-            instance.setExtractorDump(extractorDump);
-            instance.setApplierDump(applierDump);
             instance.setStatAggregation(statAggregation);
             instance.setRetryTimes(retryTimes);
             instance.setRetryInterval(retryInterval);
@@ -225,23 +219,13 @@ public class GaussController extends AbstractGaussLifeCycle {
         MDC.remove(GaussConstants.MDC_TABLE_SHIT_KEY);
     }
 
-    private RecordExtractor chooseExtractor(TableHolder tableHolder, GaussContext context) {
-        String tablename = tableHolder.table.getName();
-        String fullName = tableHolder.table.getFullName();
-        // 优先找tableName
-        String extractSql = config.getString("gauss.extractor.sql." + tablename);
-        if (StringUtils.isEmpty(extractSql)) {
-            extractSql = config.getString("gauss.extractor.sql." + fullName,
-                config.getString("gauss.extractor.sql"));
-        }
+    private RecordExtractor chooseExtractor(GaussContext context) {
         if (sourceDbType == DbType.MYSQL) {
             DbOnceFullRecordExtractor recordExtractor = new DbOnceFullRecordExtractor(context, DbType.MYSQL);
-            recordExtractor.setExtractSql(extractSql);
             recordExtractor.setTracer(progressTracer);
             return recordExtractor;
-        } else if (sourceDbType == DbType.ORACLE){
+        } else if (sourceDbType == DbType.ORACLE) {
             DbOnceFullRecordExtractor recordExtractor = new DbOnceFullRecordExtractor(context, DbType.ORACLE);
-            recordExtractor.setExtractSql(extractSql);
             recordExtractor.setTracer(progressTracer);
             return recordExtractor;
         } else {
@@ -257,12 +241,11 @@ public class GaussController extends AbstractGaussLifeCycle {
             splitSize = 100;
         }
         if (concurrent) {
-            return new MultiThreadCheckRecordApplier(context, threadSize, splitSize, applierExecutor);
+            return new MultiThreadCheckRecordApplier(context, threadSize, splitSize, applierExecutor, query_dop);
         } else {
-            return new CheckRecordApplier(context);
+            return new CheckRecordApplier(context, query_dop);
         }
     }
-
 
     private GaussContext buildContext(GaussContext globalContext, Table table) {
         GaussContext result = globalContext.cloneGlobalContext();
@@ -283,7 +266,6 @@ public class GaussController extends AbstractGaussLifeCycle {
         context.setTargetEncoding(config.getString("gauss.database.target.encode", "UTF-8"));
         context.setOnceCrawNum(config.getInt("gauss.table.onceCrawNum", 200));
         context.setTpsLimit(config.getInt("gauss.table.tpsLimit", 2000));
-        context.setRunMode(runMode);
         context.setTablepks(getTablePKs(config.getString("gauss.table.inc.tablepks")));
         return context;
     }
@@ -321,9 +303,6 @@ public class GaussController extends AbstractGaussLifeCycle {
         } else {
             properties.setProperty("maxActive", "200");
         }
-        if (dbType.isMysql()) {
-            properties.setProperty("characterEncoding", encode);
-        }
 
         DataSourceConfig dsConfig = new DataSourceConfig(url, username, password, dbType, properties);
         return dataSourceFactory.getDataSource(dsConfig);
@@ -349,12 +328,10 @@ public class GaussController extends AbstractGaussLifeCycle {
                     List<Table> whiteTables = null;
                     if (strs.length == 1) {
                         whiteTables = TableMetaGenerator.getTableMetasWithoutColumn(globalContext.getSourceDs(),
-                            strs[0],
-                            null);
+                            strs[0], null);
                     } else if (strs.length == 2) {
                         whiteTables = TableMetaGenerator.getTableMetasWithoutColumn(globalContext.getSourceDs(),
-                            strs[0],
-                            strs[1]);
+                            strs[0], strs[1]);
                     } else {
                         throw new GaussException("table[" + whiteTable + "] is not valid");
                     }
@@ -365,8 +342,8 @@ public class GaussController extends AbstractGaussLifeCycle {
 
                     for (Table table : whiteTables) {
                         // 根据实际表名处理一下
-                        if (!isBlackTable(table.getName(), tableBlackList)
-                            && !isBlackTable(table.getFullName(), tableBlackList)) {
+                        if (!isBlackTable(table.getName(), tableBlackList) && !isBlackTable(table.getFullName(),
+                            tableBlackList)) {
                             TableMetaGenerator.buildColumns(globalContext.getSourceDs(), table);
                             TableHolder holder = new TableHolder(table);
                             if (!tables.contains(holder)) {
@@ -379,8 +356,8 @@ public class GaussController extends AbstractGaussLifeCycle {
         } else {
             List<Table> metas = TableMetaGenerator.getTableMetasWithoutColumn(globalContext.getSourceDs(), null, null);
             for (Table table : metas) {
-                if (!isBlackTable(table.getName(), tableBlackList)
-                    && !isBlackTable(table.getFullName(), tableBlackList)) {
+                if (!isBlackTable(table.getName(), tableBlackList) && !isBlackTable(table.getFullName(),
+                    tableBlackList)) {
                     TableMetaGenerator.buildColumns(globalContext.getSourceDs(), table);
                     TableHolder holder = new TableHolder(table);
                     if (!tables.contains(holder)) {
@@ -434,11 +411,11 @@ public class GaussController extends AbstractGaussLifeCycle {
 
     private static class TableHolder {
 
-        public TableHolder(Table table){
+        public TableHolder(Table table) {
             this.table = table;
         }
 
-        Table          table;
+        Table table;
 
         @Override
         public int hashCode() {
@@ -450,13 +427,23 @@ public class GaussController extends AbstractGaussLifeCycle {
 
         @Override
         public boolean equals(Object obj) {
-            if (this == obj) return true;
-            if (obj == null) return false;
-            if (getClass() != obj.getClass()) return false;
+            if (this == obj) {
+                return true;
+            }
+            if (obj == null) {
+                return false;
+            }
+            if (getClass() != obj.getClass()) {
+                return false;
+            }
             TableHolder other = (TableHolder) obj;
             if (table == null) {
-                if (other.table != null) return false;
-            } else if (!table.equals(other.table)) return false;
+                if (other.table != null) {
+                    return false;
+                }
+            } else if (!table.equals(other.table)) {
+                return false;
+            }
             return true;
         }
 

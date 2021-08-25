@@ -4,8 +4,6 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.text.MessageFormat;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.LinkedBlockingQueue;
 
@@ -15,61 +13,72 @@ import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.StatementCallback;
 
+import com.gauss.common.db.sql.SqlTemplate;
 import com.gauss.common.model.DbType;
+import com.gauss.common.utils.GaussUtils;
+import com.gauss.extractor.AbstractRecordExtractor;
 import com.google.common.collect.Lists;
-import com.gauss.common.db.meta.ColumnMeta;
-import com.gauss.common.db.meta.ColumnValue;
-import com.gauss.common.db.sql.SqlTemplates;
 import com.gauss.common.model.ExtractStatus;
 import com.gauss.common.model.ProgressStatus;
 import com.gauss.common.model.GaussContext;
-import com.gauss.common.model.record.Record;
 import com.gauss.common.utils.thread.NamedThreadFactory;
 import com.gauss.exception.GaussException;
 
 /**
- * 一次性提取数据
+ * extract checksum from source table
  */
-public class DbOnceFullRecordExtractor extends AbstractDbRecordExtractor {
+public class DbOnceFullRecordExtractor extends AbstractRecordExtractor {
 
-    private static final String         FORMAT          = "select /*+parallel(t)*/ {0} from {1}.{2} t";
-    private StringBuffer                      extractSql;
-    private LinkedBlockingQueue<Record> queue;
-    private Thread                      extractorThread = null;
-    private GaussContext               context;
-    private DbType                      dbType;
+    private String extractSql;
 
-    public DbOnceFullRecordExtractor(GaussContext context, DbType dbType){
+    private LinkedBlockingQueue<String> queue;
+
+    private Thread extractorThread = null;
+
+    private GaussContext context;
+
+    private DbType dbType;
+
+    public DbOnceFullRecordExtractor(GaussContext context, DbType dbType) {
         this.context = context;
         this.dbType = dbType;
     }
-
+    @Override
     public void start() {
         super.start();
+        if (StringUtils.isEmpty(extractSql)) {
+            SqlTemplate sqlTemplate;
+            if (dbType == DbType.MYSQL) {
+                sqlTemplate = new SqlTemplate(DbType.MYSQL, context);
+                extractSql = sqlTemplate.getExtractSql();
+            } else if (dbType == DbType.ORACLE) {
+                sqlTemplate = new SqlTemplate(DbType.ORACLE, context);
+                extractSql = sqlTemplate.getExtractSql();
+            } else {
+                //todo
+            }
 
-        if (StringUtils.isEmpty(extractSql.toString())) {
-            String columns = SqlTemplates.COMMON.makeColumn(context.getTableMeta().getColumnsWithPrimary());
-            extractSql = new StringBuffer(new MessageFormat(FORMAT).format(new Object[] { columns, context.getTableMeta().getSchema(),
-                    context.getTableMeta().getName() }));
         }
 
         // 启动异步线程
         if (dbType == DbType.ORACLE) {
             //Oracle
-            extractorThread = new NamedThreadFactory(this.getClass().getSimpleName() + "-"
-                + context.getTableMeta().getFullName()).newThread(new OracleContinueExtractor(context));
+            extractorThread = new NamedThreadFactory(
+                this.getClass().getSimpleName() + "-" + context.getTableMeta().getFullName()).newThread(
+                new OracleContinueExtractor(context));
         } else {
             //Mysql
-            extractorThread = new NamedThreadFactory(this.getClass().getSimpleName() + "-"
-                + context.getTableMeta().getFullName()).newThread(new MysqlContinueExtractor(context));
+            extractorThread = new NamedThreadFactory(
+                this.getClass().getSimpleName() + "-" + context.getTableMeta().getFullName()).newThread(
+                new MysqlContinueExtractor(context));
         }
 
         extractorThread.start();
 
-        queue = new LinkedBlockingQueue<Record>(context.getOnceCrawNum() * 2);
+        queue = new LinkedBlockingQueue<String>(context.getOnceCrawNum() * 2);
         tracer.update(context.getTableMeta().getFullName(), ProgressStatus.FULLING);
     }
-
+    @Override
     public void stop() {
         super.stop();
 
@@ -82,15 +91,15 @@ public class DbOnceFullRecordExtractor extends AbstractDbRecordExtractor {
         tracer.update(context.getTableMeta().getFullName(), ProgressStatus.SUCCESS);
     }
 
-    public List<Record> extract() throws GaussException {
-        List<Record> records = Lists.newArrayListWithCapacity(context.getOnceCrawNum());
+    public List<String> extract() throws GaussException {
+        List<String> records = Lists.newArrayListWithCapacity(context.getOnceCrawNum());
         for (int i = 0; i < context.getOnceCrawNum(); i++) {
-            Record r = queue.poll();
+            String r = queue.poll();
             if (r != null) {
                 records.add(r);
-            } else if (status() == ExtractStatus.TABLE_END) {
+            } else if (getStatus() == ExtractStatus.TABLE_END) {
                 // 验证下是否已经结束了
-                Record r1 = queue.poll();
+                String r1 = queue.poll();
                 if (r1 != null) {
                     records.add(r1);
                 } else {
@@ -110,52 +119,32 @@ public class DbOnceFullRecordExtractor extends AbstractDbRecordExtractor {
 
         private JdbcTemplate jdbcTemplate;
 
-        public MysqlContinueExtractor(GaussContext context){
+        public MysqlContinueExtractor(GaussContext context) {
             jdbcTemplate = new JdbcTemplate(context.getSourceDs());
         }
 
         public void run() {
             jdbcTemplate.execute(new ConnectionCallback() {
-
                 public Object doInConnection(Connection conn) throws SQLException, DataAccessException {
-                    Statement stmt = conn.createStatement(ResultSet.TYPE_FORWARD_ONLY,ResultSet.CONCUR_READ_ONLY);
+                    Statement stmt = conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
                     stmt.setFetchSize(Integer.MIN_VALUE);
                     stmt.setFetchDirection(ResultSet.FETCH_REVERSE);
-                    stmt.execute(extractSql.toString());
+                    stmt.execute(extractSql);
                     ResultSet rs = stmt.getResultSet();
                     while (rs.next()) {
-                        List<ColumnValue> cms = new ArrayList<ColumnValue>();
-                        List<ColumnValue> pks = new ArrayList<ColumnValue>();
-
-                        for (ColumnMeta pk : context.getTableMeta().getPrimaryKeys()) {
-                            ColumnValue cv = getColumnValue(rs, context.getSourceEncoding(), pk);
-                            pks.add(cv);
-                        }
-
-                        for (ColumnMeta col : context.getTableMeta().getColumns()) {
-                            ColumnValue cv = getColumnValue(rs, context.getSourceEncoding(), col);
-                            cms.add(cv);
-                        }
-
-                        Record re = new Record(context.getTableMeta().getSchema(),
-                            context.getTableMeta().getName(),
-                            pks,
-                            cms);
                         try {
-                            queue.put(re);
+                            queue.put(rs.getString(1));
                         } catch (InterruptedException e) {
                             Thread.currentThread().interrupt(); // 传递
                             throw new GaussException(e);
                         }
                     }
-
                     setStatus(ExtractStatus.TABLE_END);
                     rs.close();
                     stmt.close();
                     return null;
                 }
             });
-
         }
     }
 
@@ -163,7 +152,7 @@ public class DbOnceFullRecordExtractor extends AbstractDbRecordExtractor {
 
         private JdbcTemplate jdbcTemplate;
 
-        public OracleContinueExtractor(GaussContext context){
+        public OracleContinueExtractor(GaussContext context) {
             jdbcTemplate = new JdbcTemplate(context.getSourceDs());
         }
 
@@ -172,28 +161,11 @@ public class DbOnceFullRecordExtractor extends AbstractDbRecordExtractor {
 
                 public Object doInStatement(Statement stmt) throws SQLException, DataAccessException {
                     stmt.setFetchSize(200);
-                    stmt.execute(extractSql.toString());
+                    stmt.execute(extractSql);
                     ResultSet rs = stmt.getResultSet();
                     while (rs.next()) {
-                        List<ColumnValue> cms = new ArrayList<ColumnValue>();
-                        List<ColumnValue> pks = new ArrayList<ColumnValue>();
-
-                        for (ColumnMeta pk : context.getTableMeta().getPrimaryKeys()) {
-                            ColumnValue cv = getColumnValue(rs, context.getSourceEncoding(), pk);
-                            pks.add(cv);
-                        }
-
-                        for (ColumnMeta col : context.getTableMeta().getColumns()) {
-                            ColumnValue cv = getColumnValue(rs, context.getSourceEncoding(), col);
-                            cms.add(cv);
-                        }
-
-                        Record re = new Record(context.getTableMeta().getSchema(),
-                            context.getTableMeta().getName(),
-                            pks,
-                            cms);
                         try {
-                            queue.put(re);
+                            queue.put(rs.getString(1));
                         } catch (InterruptedException e) {
                             Thread.currentThread().interrupt(); // 传递
                             throw new GaussException(e);
@@ -208,13 +180,4 @@ public class DbOnceFullRecordExtractor extends AbstractDbRecordExtractor {
 
         }
     }
-
-    public void setExtractSql(String extractSql) {
-        if (extractSql != null) {
-            this.extractSql = new StringBuffer(extractSql);
-        } else {
-            this.extractSql = new StringBuffer();
-        }
-    }
-
 }

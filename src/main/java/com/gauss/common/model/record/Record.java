@@ -10,18 +10,23 @@ import com.gauss.common.utils.GaussToStringStyle;
 import com.gauss.exception.GaussException;
 
 /**
- * 代表一条记录
+ * represent one Record
  */
 public class Record {
 
     private String            schemaName;
     private String            tableName;
-    private List<ColumnValue> primaryKeys = Lists.newArrayList();
-    private List<ColumnValue> columns     = Lists.newArrayList();
+    private List<ColumnValue> primaryKeys;
+    private List<ColumnValue> columns;
 
     public Record(){
 
     }
+
+    public Record(String schemaName, String tableName, List<ColumnValue> columns){
+        this(schemaName, tableName, Lists.newArrayList(), columns);
+    }
+
 
     public Record(String schemaName, String tableName, List<ColumnValue> primaryKeys, List<ColumnValue> columns){
         this.schemaName = schemaName;
@@ -56,17 +61,12 @@ public class Record {
         columns.add(column);
     }
 
-    /**
-     * 建议直接使用getColumnByName
-     */
+
     @Deprecated
     public ColumnValue getPrimaryKeyByName(String pkName) {
         return getPrimaryKeyByName(pkName, false);
     }
 
-    /**
-     * 建议直接使用getColumnByName
-     */
     @Deprecated
     public ColumnValue getPrimaryKeyByName(String pkName, boolean returnNullNotExist) {
         for (ColumnValue pk : primaryKeys) {
@@ -82,16 +82,11 @@ public class Record {
         }
     }
 
-    /**
-     * 根据列名查找对应的字段信息(包括主键中的字段)
-     */
+
     public ColumnValue getColumnByName(String columnName) {
         return getColumnByName(columnName, false);
     }
 
-    /**
-     * 根据列名查找对应的字段信息(包括主键中的字段)
-     */
     public ColumnValue getColumnByName(String columnName, boolean returnNullNotExist) {
         for (ColumnValue column : columns) {
             if (column.getColumn().getName().equalsIgnoreCase(columnName)) {
@@ -112,16 +107,10 @@ public class Record {
         }
     }
 
-    /**
-     * 根据列名删除对应的字段信息(包括主键中的字段)
-     */
     public ColumnValue removeColumnByName(String columnName) {
         return removeColumnByName(columnName, false);
     }
 
-    /**
-     * 根据列名删除对应的字段信息(包括主键中的字段)
-     */
     public ColumnValue removeColumnByName(String columnName, boolean returnNullNotExist) {
         ColumnValue remove = null;
         for (ColumnValue pk : primaryKeys) {

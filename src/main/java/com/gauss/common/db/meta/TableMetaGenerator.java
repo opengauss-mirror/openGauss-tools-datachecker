@@ -22,12 +22,9 @@ import com.gauss.exception.GaussException;
 
 
 /**
- * 基于mysql的table meta获取
+ * gey table meta
  */
 public class TableMetaGenerator {
-    /**
-     * 获取对应的table meta信息，精确匹配
-     */
     public static Table getTableMeta(final DataSource dataSource, final String schemaName, final String tableName) {
         JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
         return (Table) jdbcTemplate.execute(new ConnectionCallback() {
@@ -58,7 +55,7 @@ public class TableMetaGenerator {
                     throw new GaussException("table[" + schemaName + "." + tableName + "] is not found");
                 }
 
-                // 查询所有字段
+                // get all columns
                 rs = metaData.getColumns(sName, sName, tName, null);
                 List<ColumnMeta> columnList = new ArrayList<ColumnMeta>();
                 while (rs.next()) {
@@ -71,13 +68,13 @@ public class TableMetaGenerator {
                         int columnType = rs.getInt(5);
                         String typeName = rs.getString(6);
                         columnType = convertSqlType(columnType, typeName);
-                        ColumnMeta col = new ColumnMeta(columnName, columnType);
+                        ColumnMeta col = new ColumnMeta(columnName, columnType, typeName);
                         columnList.add(col);
                     }
                 }
                 rs.close();
 
-                // 查询主键信息
+                // get primary keys
                 List<String> primaryKeys = new ArrayList<String>();
                 rs = metaData.getPrimaryKeys(sName, sName, tName);
                 while (rs.next()) {
@@ -140,7 +137,7 @@ public class TableMetaGenerator {
     }
 
     /**
-     * 查询所有的表，不返回表中的字段
+     * get Table Metas Without Column
      */
     public static List<Table> getTableMetasWithoutColumn(final DataSource dataSource, final String schemaName,
                                                          final String tableName) {
@@ -160,7 +157,7 @@ public class TableMetaGenerator {
                 if (StringUtils.startsWithIgnoreCase(databaseName, "oracle")) {
                     //Oracle
                     if (StringUtils.isEmpty(tableName)) {
-                        // 忽略系统表
+                        // ignore system tales
                         query = new StringBuffer("SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') AS SCHEMA_NAME , TABLE_NAME FROM USER_TABLES T , USER_USERS U WHERE U.USERNAME = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')");
                     } else {
                         query = new StringBuffer("SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') AS SCHEMA_NAME , TABLE_NAME FROM USER_TABLES T , USER_USERS U WHERE T.TABLE_NAME ='" + tName.toUpperCase() + "'");
@@ -168,7 +165,7 @@ public class TableMetaGenerator {
                 } else {
                     //Mysql
                     if (StringUtils.isEmpty(tableName)) {
-                        // 忽略系统表
+                        // ignore system tales
                         query = new StringBuffer("select TABLE_SCHEMA, TABLE_NAME from information_schema.tables where table_schema='"+sName+"' and table_type= 'BASE TABLE'");
                     } else {
                         query = new StringBuffer("select TABLE_SCHEMA, TABLE_NAME from information_schema.tables where table_schema='"+sName+"' and table_name='"+tName+"'");
@@ -198,7 +195,7 @@ public class TableMetaGenerator {
             public Object doInConnection(Connection conn) throws SQLException, DataAccessException {
                 DatabaseMetaData metaData = conn.getMetaData();
                 ResultSet rs;
-                // 查询所有字段
+                // get all columns
                 rs = metaData.getColumns(table.getSchema(), table.getSchema(), table.getName(), null);
                 List<ColumnMeta> columnList = new ArrayList<ColumnMeta>();
 
@@ -213,13 +210,13 @@ public class TableMetaGenerator {
                         int columnType = rs.getInt(5);
                         String typeName = rs.getString(6);
                         columnType = convertSqlType(columnType, typeName);
-                        ColumnMeta col = new ColumnMeta(columnName, columnType);
+                        ColumnMeta col = new ColumnMeta(columnName, columnType, typeName);
                         columnList.add(col);
                     }
                 }
                 rs.close();
 
-                // 查询主键信息
+                // get getPrimaryKeys
                 rs = metaData.getPrimaryKeys(table.getSchema(), table.getSchema(), table.getName());
                 List<String> primaryKeys = new ArrayList<String>();
                 while (rs.next()) {
@@ -254,12 +251,11 @@ public class TableMetaGenerator {
     }
 
     /**
-     * 根据{@linkplain DatabaseMetaData}获取正确的表名
-     *
+     * get Identifier Name
      */
     private static String getIdentifierName(String name, DatabaseMetaData metaData) throws SQLException {
         if (metaData.storesMixedCaseIdentifiers()) {
-            return name; // 保留原始名
+            return name;
         } else if (metaData.storesUpperCaseIdentifiers()) {
             return StringUtils.upperCase(name);
         } else if (metaData.storesLowerCaseIdentifiers()) {

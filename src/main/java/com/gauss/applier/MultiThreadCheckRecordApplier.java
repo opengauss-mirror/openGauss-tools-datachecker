@@ -1,15 +1,17 @@
 package com.gauss.applier;
 
+import java.io.IOException;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.commons.lang.exception.ExceptionUtils;
 import org.slf4j.MDC;
 
 import com.gauss.common.GaussConstants;
 import com.gauss.common.model.GaussContext;
-import com.gauss.common.model.record.Record;
 import com.gauss.common.utils.GaussUtils;
 import com.gauss.common.utils.thread.ExecutorTemplate;
 import com.gauss.common.utils.thread.NamedThreadFactory;
@@ -22,20 +24,9 @@ public class MultiThreadCheckRecordApplier extends CheckRecordApplier {
     private ThreadPoolExecutor executor;
     private String             executorName;
 
-    public MultiThreadCheckRecordApplier(GaussContext context){
-        super(context);
-    }
-
-    public MultiThreadCheckRecordApplier(GaussContext context, int threadSize, int splitSize){
-        super(context);
-
-        this.threadSize = threadSize;
-        this.splitSize = splitSize;
-    }
-
     public MultiThreadCheckRecordApplier(GaussContext context, int threadSize, int splitSize,
-                                         ThreadPoolExecutor executor){
-        super(context);
+                                         ThreadPoolExecutor executor, int query_dop){
+        super(context,query_dop);
 
         this.threadSize = threadSize;
         this.splitSize = splitSize;
@@ -57,7 +48,7 @@ public class MultiThreadCheckRecordApplier extends CheckRecordApplier {
         }
     }
 
-    public void apply(final List<Record> records) throws GaussException {
+    public void apply(final List<String> records) throws GaussException {
         // no one,just return
         if (GaussUtils.isEmpty(records)) {
             return;
@@ -70,7 +61,7 @@ public class MultiThreadCheckRecordApplier extends CheckRecordApplier {
                 int size = records.size();
                 for (; index < size;) {
                     int end = Math.min(index + splitSize, size);
-                    final List<Record> subList = records.subList(index, end);
+                    final List<String> subList = records.subList(index, end);
                     template.submit(new Runnable() {
 
                         public void run() {
@@ -79,30 +70,32 @@ public class MultiThreadCheckRecordApplier extends CheckRecordApplier {
                                 MDC.put(GaussConstants.MDC_TABLE_SHIT_KEY, context.getTableMeta().getFullName());
                                 Thread.currentThread().setName(executorName);
                                 doApply(subList);
+                            } catch (SQLException | IOException throwables) {
+                                logger.error("## Something goes wrong when inserting checksum:\n{}",
+                                    ExceptionUtils.getFullStackTrace(throwables));
+                                System.exit(0);
                             } finally {
                                 Thread.currentThread().setName(name);
                             }
 
                         }
                     });
-                    index = end;// 移动到下一批次
+                    index = end;// move to next batch
                 }
 
-                // 等待所有结果返回
+                // waiting fot all results
                 template.waitForResult();
             } finally {
                 template.clear();
             }
         } else {
-            doApply(records);
+            try {
+                doApply(records);
+            } catch (IOException | SQLException e) {
+                logger.error("## Something goes wrong when inserting checksum:\n{}",
+                    ExceptionUtils.getFullStackTrace(e));
+                System.exit(0);
+            }
         }
-    }
-
-    public void setThreadSize(int threadSize) {
-        this.threadSize = threadSize;
-    }
-
-    public void setSplitSize(int splitSize) {
-        this.splitSize = splitSize;
     }
 }
