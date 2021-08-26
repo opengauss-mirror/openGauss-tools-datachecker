@@ -105,6 +105,9 @@ public class GaussInstance extends AbstractGaussLifeCycle {
             if (!extractor.isStart()) {
                 extractor.start();
             }
+            if (!applier.isStart()) {
+                applier.start();
+            }
 
             worker = new Thread(new Runnable() {
 

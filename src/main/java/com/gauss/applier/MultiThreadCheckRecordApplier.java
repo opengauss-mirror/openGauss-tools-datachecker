@@ -33,6 +33,7 @@ public class MultiThreadCheckRecordApplier extends CheckRecordApplier {
         this.executor = executor;
     }
 
+    @Override
     public void start() {
         super.start();
 
