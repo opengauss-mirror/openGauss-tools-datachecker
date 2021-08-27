@@ -15,6 +15,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import com.gauss.common.db.meta.Table;
 import com.gauss.common.lifecycle.AbstractGaussLifeCycle;
 import com.gauss.common.model.GaussContext;
 import com.gauss.common.utils.GaussUtils;
@@ -34,6 +35,12 @@ public class CheckRecordApplier extends AbstractGaussLifeCycle implements Record
 
     public CheckRecordApplier(GaussContext context, int query_dop) {
         this.context = context;
+        this.query_dop = query_dop;
+    }
+
+    @Override
+    public void start() {
+        super.start();
     }
 
     public void apply(List<String> records) throws GaussException {
@@ -58,7 +65,9 @@ public class CheckRecordApplier extends AbstractGaussLifeCycle implements Record
                 StringBuilder buffer = new StringBuilder();
                 records.stream().forEach((String record) -> {buffer.append(record).append(SEPARATOR);});
 
-                String sql = "copy " + context.getTableMeta().getFullName() + "_dataCheckerA " + "from stdin";
+                Table tableMeta = context.getTableMeta();
+                String compareTableName = tableMeta.getSchema() + ".A" + tableMeta.getName();
+                String sql = "copy " + compareTableName + "_dataCheckerA " + "from stdin";
                 BaseConnection baseConn = (BaseConnection) (connection.getMetaData().getConnection());
                 CopyManager cp = new CopyManager(baseConn);
                 StringReader reader = new StringReader(buffer.toString());

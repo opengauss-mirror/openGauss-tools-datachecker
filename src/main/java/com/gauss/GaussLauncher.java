@@ -1,6 +1,8 @@
 package com.gauss;
 
 import java.io.FileInputStream;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 import org.apache.commons.configuration.PropertiesConfiguration;
 import org.apache.commons.lang.StringUtils;
@@ -8,12 +10,14 @@ import org.apache.commons.lang.exception.ExceptionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.gauss.common.utils.GaussUtils;
 import com.gauss.controller.GaussController;
 
 public class GaussLauncher {
 
     private static final String CLASSPATH_URL_PREFIX = "classpath:";
     private static final Logger logger               = LoggerFactory.getLogger(GaussLauncher.class);
+    private static final Logger summaryLogger    = LoggerFactory.getLogger("summary");
 
     public static void main(String[] args) throws Throwable {
         try {
@@ -27,6 +31,7 @@ public class GaussLauncher {
             }
 
             logger.info("## start the DataChecker.");
+            summaryLogger.info("Start time : " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()) + "\n");
             final GaussController controller = new GaussController(config);
             controller.start();
             logger.info("## the DataChecker is running now ......");
@@ -41,6 +46,7 @@ public class GaussLauncher {
                             logger.warn("## something goes wrong when stopping DataChecker:\n{}",
                                 ExceptionUtils.getFullStackTrace(e));
                         } finally {
+                            summaryLogger.info("End time : " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()) + "\n");
                             logger.info("## DataChecker is down.");
                         }
                     }
@@ -54,10 +60,12 @@ public class GaussLauncher {
             if (controller.isStart()) {
                 controller.stop();
             }
+            summaryLogger.info("End time : " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()) + "\n");
             logger.info("## DataChecker is down.");
         } catch (Throwable e) {
             logger.error("## Something goes wrong when starting up the DataChecker:\n{}",
                 ExceptionUtils.getFullStackTrace(e));
+            summaryLogger.info("End time : " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()) + "\n");
             System.exit(0);
         }
     }

@@ -1,5 +1,6 @@
 package com.gauss.preparer;
 
+import com.gauss.common.db.meta.Table;
 import com.gauss.common.db.sql.SqlTemplate;
 import com.gauss.common.model.DbType;
 import com.gauss.common.model.GaussContext;
@@ -24,16 +25,15 @@ public class GaussRecordPreparer extends AbstractRecordPreparer {
 
     private Thread prepareThread = null;
 
-    String orinTableName;
-
     String compareTableName;
 
     public GaussRecordPreparer(GaussContext context, int query_dop) {
         this.context = context;
         this.query_dop = query_dop;
-        orinTableName = context.getTableMeta().getFullName();
-        compareTableName = orinTableName + "_dataChecker";
+        Table tableMeta = context.getTableMeta();
+        compareTableName = tableMeta.getSchema() + ".A" + tableMeta.getName() + "_dataChecker";
     }
+
     @Override
     public void start() {
         super.start();
@@ -53,6 +53,7 @@ public class GaussRecordPreparer extends AbstractRecordPreparer {
             new Preparer(context));
         prepareThread.start();
     }
+
     @Override
     public void stop() {
         super.stop();

@@ -3,6 +3,7 @@ package com.gauss.comparer;
 import com.gauss.common.audit.RecordDiffer;
 import com.gauss.common.db.meta.ColumnMeta;
 import com.gauss.common.db.meta.ColumnValue;
+import com.gauss.common.db.meta.Table;
 import com.gauss.common.db.sql.SqlTemplate;
 import com.gauss.common.model.DbType;
 import com.gauss.common.model.GaussContext;
@@ -34,8 +35,9 @@ public class GaussRecordComparer extends AbstractRecordComparer {
         this.query_dop = query_dop;
         this.dbType = dbType;
         this.context = context;
-        this.orinTableName = context.getTableMeta().getFullName();
-        this.compareTableName = orinTableName + "_dataChecker";
+        Table tableMeta = context.getTableMeta();
+        this.orinTableName = tableMeta.getFullName();
+        this.compareTableName = tableMeta.getSchema() + ".A" + tableMeta.getName() + "_dataChecker";
     }
 
     @Override
@@ -70,7 +72,7 @@ public class GaussRecordComparer extends AbstractRecordComparer {
 
         if (!diffTarget.isEmpty()) {
             GaussUtils.outputUnnormal("Target table : " + orinTableName);
-            searchFromDb(sqlTemplate.getSearchSql(diffTarget),dbType);
+            searchFromDb(new SqlTemplate(DbType.OPGS, context).getSearchSql(diffTarget),DbType.OPGS);
         }
 
         jdbcTemplate.execute("drop table " + compareTableName + "A;");
