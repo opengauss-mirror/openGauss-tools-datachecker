@@ -22,6 +22,10 @@ public class ColumnMeta {
         this.typeName = typeName;
     }
 
+    public String getTypeName() {
+        return typeName;
+    }
+
     public String getName() {
         return name;
     }

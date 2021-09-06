@@ -43,10 +43,10 @@ public class SqlTemplate {
                 default:
                     sb.append(meta.getName());
             }
-            sb.append(" || '_' || ");
+            sb.append(" || ");
         }
         int length = sb.length();
-        sb.delete(length - 11, length);
+        sb.delete(length - 4, length);
         sb.append("))) ");
         return sb.toString();
     }
@@ -57,13 +57,25 @@ public class SqlTemplate {
         List<ColumnMeta> columns = context.getTableMeta().getColumns();
         for (ColumnMeta meta : columns) {
             switch (meta.getType()) {
+                case Types.BOOLEAN:
+                case Types.BIT:
+                    sb.append("convert(").append(meta.getName()).append(",int)");
+                    break;
+                case Types.CHAR:
+                    sb.append("convert(").append(meta.getName()).append(",char)");
+                    break;
                 case Types.REAL:
                 case Types.FLOAT:
                 case Types.DOUBLE:
                     sb.append("round(convert(").append(meta.getName()).append(",char), 10)");
                     break;
+                case Types.VARBINARY:
                 case Types.BINARY:
-                    sb.append("lower(hex(").append(meta.getName()).append("))");
+                    if (meta.getTypeName().equals("GEOMETRY")) {
+                        sb.append("substring(AsText(").append(meta.getName()).append("), 6)");
+                    } else {
+                        sb.append("lower(hex(").append(meta.getName()).append("))");
+                    }
                     break;
                 default:
                     sb.append(meta.getName());
@@ -82,7 +94,11 @@ public class SqlTemplate {
         for (ColumnMeta meta : columns) {
             switch (meta.getType()) {
                 case Types.BOOLEAN:
-                    sb.append("cast(").append(meta.getName()).append(" as int");
+                case Types.BIT:
+                    sb.append("cast(").append(meta.getName()).append(" as int)");
+                    break;
+                case Types.CHAR:
+                    sb.append("cast(").append(meta.getName()).append(" as varchar)");
                     break;
                 case Types.REAL:
                     //same as double
@@ -91,8 +107,13 @@ public class SqlTemplate {
                 case Types.DOUBLE:
                     sb.append("round(").append(meta.getName()).append("::numeric, 10)");
                     break;
+                case Types.VARBINARY:
                 case Types.BINARY:
-                    sb.append("substring(cast(").append(meta.getName()).append(" as varchar) from 3)");
+                    if (meta.getTypeName().equals("GEOMETRY")) {
+                        sb.append("replace(cast(").append(meta.getName()).append(" as varchar),',',' ')");
+                    } else {
+                        sb.append("substring(cast(").append(meta.getName()).append(" as varchar) from 3)");
+                    }
                     break;
                 default:
                     sb.append(meta.getName());

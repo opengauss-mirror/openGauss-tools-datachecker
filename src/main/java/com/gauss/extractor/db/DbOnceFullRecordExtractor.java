@@ -57,7 +57,6 @@ public class DbOnceFullRecordExtractor extends AbstractRecordExtractor {
             } else {
                 //todo
             }
-
         }
 
         // 启动异步线程
