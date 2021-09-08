@@ -69,8 +69,6 @@ public class GaussInstance extends AbstractGaussLifeCycle {
 
     private int retryInterval;
 
-    private int noUpdateThresold;
-
     private int noUpdateTimes = 0;
 
     private boolean concurrent = true;
@@ -374,10 +372,6 @@ public class GaussInstance extends AbstractGaussLifeCycle {
 
     public void setProgressTracer(ProgressTracer progressTracer) {
         this.progressTracer = progressTracer;
-    }
-
-    public void setNoUpdateThresold(int noUpdateThresold) {
-        this.noUpdateThresold = noUpdateThresold;
     }
 
     public void setThreadSize(int threadSize) {

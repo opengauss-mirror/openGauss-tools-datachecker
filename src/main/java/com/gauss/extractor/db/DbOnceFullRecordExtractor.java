@@ -123,6 +123,7 @@ public class DbOnceFullRecordExtractor extends AbstractRecordExtractor {
         }
 
         public void run() {
+            jdbcTemplate.execute("SET NAMES utf8;");
             jdbcTemplate.execute(new ConnectionCallback() {
                 public Object doInConnection(Connection conn) throws SQLException, DataAccessException {
                     Statement stmt = conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);

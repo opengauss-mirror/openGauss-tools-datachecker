@@ -90,7 +90,9 @@ public class GaussController extends AbstractGaussLifeCycle {
         int statBufferSize = config.getInt("gauss.stat.buffer.size", 16384);
         int statPrintInterval = config.getInt("gauss.stat.print.interval", 5);
         query_dop = config.getInt("gauss.table.query_dop", 8);
-
+        if (query_dop <= 0 || query_dop >= 65) {
+            query_dop = 8;
+        }
         // enable concurrent
         boolean concurrent = config.getBoolean("gauss.table.concurrent.enable", false);
 
@@ -98,6 +100,9 @@ public class GaussController extends AbstractGaussLifeCycle {
         int threadSize = 1; // 默认1，代表串行
         if (concurrent) {
             threadSize = config.getInt("gauss.table.concurrent.size", 5); // 并行执行的table数
+            if (threadSize <= 0) {
+                threadSize = 5;
+            }
         }
 
         tableController = new TableController(tableMetas.size(), threadSize);
@@ -105,11 +110,6 @@ public class GaussController extends AbstractGaussLifeCycle {
         int retryTimes = config.getInt("gauss.table.retry.times", 3);
         int retryInterval = config.getInt("gauss.table.retry.interval", 1000);
 
-        int noUpdateThresoldDefault = -1;
-        if (threadSize < tableMetas.size()) { // 如果是非一次性并发跑，默认为3次noUpdate
-            noUpdateThresoldDefault = 3;
-        }
-        int noUpdateThresold = config.getInt("gauss.extractor.noupdate.thresold", noUpdateThresoldDefault);
         boolean useExtractorExecutor = config.getBoolean("gauss.extractor.concurrent.global", false);
         boolean useApplierExecutor = config.getBoolean("gauss.applier.concurrent.global", false);
         if (useExtractorExecutor) {
@@ -141,7 +141,6 @@ public class GaussController extends AbstractGaussLifeCycle {
             instance.setRetryInterval(retryInterval);
             instance.setTargetDbType(targetDbType);
             instance.setProgressTracer(progressTracer);
-            instance.setNoUpdateThresold(noUpdateThresold);
             instance.setThreadSize(config.getInt("gauss.extractor.concurrent.size", 300));
             instance.setExecutor(extractorExecutor);
             instances.add(instance);

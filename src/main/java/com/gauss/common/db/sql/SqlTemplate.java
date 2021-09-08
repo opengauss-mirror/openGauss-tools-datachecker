@@ -59,8 +59,6 @@ public class SqlTemplate {
             switch (meta.getType()) {
                 case Types.BOOLEAN:
                 case Types.BIT:
-                    sb.append("convert(").append(meta.getName()).append(",int)");
-                    break;
                 case Types.CHAR:
                     sb.append("convert(").append(meta.getName()).append(",char)");
                     break;
