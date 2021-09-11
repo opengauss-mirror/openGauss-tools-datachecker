@@ -66,8 +66,8 @@ public class CheckRecordApplier extends AbstractGaussLifeCycle implements Record
                 records.stream().forEach((String record) -> {buffer.append(record).append(SEPARATOR);});
 
                 Table tableMeta = context.getTableMeta();
-                String compareTableName = tableMeta.getSchema() + ".A" + tableMeta.getName();
-                String sql = "copy " + compareTableName + "_dataCheckerA " + "from stdin";
+                String compareTableName = "\"" + tableMeta.getSchema() + "\".\"" + tableMeta.getName();
+                String sql = "copy " + compareTableName + "_dataCheckerA\" " + "from stdin";
                 BaseConnection baseConn = (BaseConnection) (connection.getMetaData().getConnection());
                 CopyManager cp = new CopyManager(baseConn);
                 StringReader reader = new StringReader(buffer.toString());

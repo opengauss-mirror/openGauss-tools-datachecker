@@ -74,62 +74,7 @@ public class TableMetaGenerator {
                 }
                 rs.close();
 
-                // get primary keys
-                List<String> primaryKeys = new ArrayList<String>();
-                rs = metaData.getPrimaryKeys(sName, sName, tName);
-                while (rs.next()) {
-                    String catlog = rs.getString(1);
-                    String schema = rs.getString(2);
-                    String name = rs.getString(3);
-                    if ((sName == null || LikeUtil.isMatch(sName, catlog) || LikeUtil.isMatch(sName, schema))
-                        && LikeUtil.isMatch(tName, name)) {
-                        primaryKeys.add(StringUtils.upperCase(rs.getString(4)));
-                    }
-                }
-                rs.close();
-
-                List<String> uniqueKeys = new ArrayList<String>();
-                if (primaryKeys.isEmpty()) {
-                    String lastIndexName = null;
-                    rs = metaData.getIndexInfo(sName, sName, tName, true, true);
-                    while (rs.next()) {
-                        String catlog = rs.getString(1);
-                        String schema = rs.getString(2);
-                        String name = rs.getString(3);
-                        if ((sName == null || LikeUtil.isMatch(sName, catlog) || LikeUtil.isMatch(sName, schema))
-                            && LikeUtil.isMatch(tName, name)) {
-                            String indexName = StringUtils.upperCase(rs.getString(6));
-                            if ("PRIMARY".equals(indexName)) {
-                                continue;
-                            }
-
-                            if (lastIndexName == null) {
-                                lastIndexName = indexName;
-                            } else if (!lastIndexName.equals(indexName)) {
-                                break;
-                            }
-
-                            uniqueKeys.add(StringUtils.upperCase(rs.getString(9)));
-                        }
-                    }
-                    rs.close();
-
-                    // 如果无主键，使用唯一键
-                    primaryKeys.addAll(uniqueKeys);
-                }
-
-                Set<ColumnMeta> columns = new HashSet<ColumnMeta>();
-                Set<ColumnMeta> pks = new HashSet<ColumnMeta>();
-                for (ColumnMeta columnMeta : columnList) {
-                    if (primaryKeys.contains(columnMeta.getName())) {
-                        pks.add(columnMeta);
-                    } else {
-                        columns.add(columnMeta);
-                    }
-                }
-
-                table.getColumns().addAll(columns);
-                table.getPrimaryKeys().addAll(pks);
+                table.getColumns().addAll(columnList);
                 return table;
             }
 
@@ -215,37 +160,9 @@ public class TableMetaGenerator {
                     }
                 }
                 rs.close();
-
-                // get getPrimaryKeys
-                rs = metaData.getPrimaryKeys(table.getSchema(), table.getSchema(), table.getName());
-                List<String> primaryKeys = new ArrayList<String>();
-                while (rs.next()) {
-                    String catlog = rs.getString(1);
-                    String schema = rs.getString(2);
-                    String name = rs.getString(3);
-                    if ((table.getSchema() == null || StringUtils.equalsIgnoreCase(catlog, table.getSchema()) || StringUtils.equalsIgnoreCase(schema,
-                        table.getSchema()))
-                        && StringUtils.equalsIgnoreCase(name, table.getName())) {
-                        primaryKeys.add(rs.getString(4));
-                    }
-                }
-                rs.close();
-
-                Set<ColumnMeta> columns = new HashSet<ColumnMeta>();
-                Set<ColumnMeta> pks = new HashSet<ColumnMeta>();
-                for (ColumnMeta columnMeta : columnList) {
-                    if (primaryKeys.contains(columnMeta.getName())) {
-                        pks.add(columnMeta);
-                    } else {
-                        columns.add(columnMeta);
-                    }
-                }
-
-                table.getColumns().addAll(columns);
-                table.getPrimaryKeys().addAll(pks);
+                table.getColumns().addAll(columnList);
                 return null;
             }
-
         });
 
     }

@@ -17,7 +17,7 @@ public class ColumnMeta {
     private String typeName = "";
 
     public ColumnMeta(String columnName, int columnType, String typeName) {
-        this.name = StringUtils.upperCase(columnName);
+        this.name = columnName;
         this.type = columnType;
         this.typeName = typeName;
     }

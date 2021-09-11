@@ -1,11 +1,9 @@
 package com.gauss.preparer;
 
 import com.gauss.common.db.meta.Table;
-import com.gauss.common.db.sql.SqlTemplate;
-import com.gauss.common.model.DbType;
+import com.gauss.common.db.sql.OpenGaussUtil;
 import com.gauss.common.model.GaussContext;
 import com.gauss.common.model.PrepareStatus;
-import com.gauss.common.utils.GaussUtils;
 import com.gauss.common.utils.thread.NamedThreadFactory;
 
 import org.apache.commons.lang.StringUtils;
@@ -31,20 +29,20 @@ public class GaussRecordPreparer extends AbstractRecordPreparer {
         this.context = context;
         this.query_dop = query_dop;
         Table tableMeta = context.getTableMeta();
-        compareTableName = tableMeta.getSchema() + ".A" + tableMeta.getName() + "_dataChecker";
+        compareTableName = "\"" + tableMeta.getSchema() + "\".\"" + tableMeta.getName() + "_dataChecker";
     }
 
     @Override
     public void start() {
         super.start();
         JdbcTemplate jdbcTemplate = new JdbcTemplate(context.getTargetDs());
-        jdbcTemplate.execute("drop table if exists " + compareTableName + "A;");
-        jdbcTemplate.execute("create unlogged table " + compareTableName + "A(checksumA text);");
-        jdbcTemplate.execute("drop table if exists " + compareTableName + "B;");
-        jdbcTemplate.execute("create unlogged table " + compareTableName + "B(checksumB text);");
+        jdbcTemplate.execute("drop table if exists " + compareTableName + "A\";");
+        jdbcTemplate.execute("create unlogged table " + compareTableName + "A\"(checksumA text);");
+        jdbcTemplate.execute("drop table if exists " + compareTableName + "B\";");
+        jdbcTemplate.execute("create unlogged table " + compareTableName + "B\"(checksumB text);");
         if (StringUtils.isEmpty(prepareSql)) {
-            SqlTemplate sqlTemplate = new SqlTemplate(DbType.OPGS, context);
-            prepareSql = sqlTemplate.getPrepareSql();
+            OpenGaussUtil openGaussUtil = new OpenGaussUtil(context);
+            prepareSql = openGaussUtil.getPrepareSql();
         }
 
         // Asynchronous thread
