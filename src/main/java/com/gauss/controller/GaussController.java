@@ -280,7 +280,7 @@ public class GaussController extends AbstractGaussLifeCycle {
                 String tableName = tablev[0];
                 String[] pks = new String[tablev.length - 1];
                 for (int i = 1; i < tablev.length; i++) {
-                    pks[i - 1] = new String(tablev[i]).toUpperCase().toString();
+                    pks[i - 1] = new String(tablev[i]).toString();
                 }
                 tps.put(new String(tableName).toUpperCase().toString(), pks);
             }

@@ -81,7 +81,7 @@ public class GaussInstance extends AbstractGaussLifeCycle {
 
     public GaussInstance(GaussContext context) {
         this.context = context;
-        this.tableShitKey = context.getTableMeta().getFullName();
+        this.tableShitKey = context.getTableMeta().getFullName().replaceAll("[/\\\\:*?|\"<>&%]", "0");
     }
 
     public void start() {

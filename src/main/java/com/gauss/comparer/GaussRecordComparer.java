@@ -4,7 +4,8 @@ import com.gauss.common.audit.RecordDiffer;
 import com.gauss.common.db.meta.ColumnMeta;
 import com.gauss.common.db.meta.ColumnValue;
 import com.gauss.common.db.meta.Table;
-import com.gauss.common.db.sql.SqlTemplate;
+import com.gauss.common.db.sql.OpenGaussUtil;
+import com.gauss.common.db.sql.SqlFactory;
 import com.gauss.common.model.DbType;
 import com.gauss.common.model.GaussContext;
 import com.gauss.common.model.record.Record;
@@ -19,8 +20,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class GaussRecordComparer extends AbstractRecordComparer {
-    String compareSql;
-
     DbType dbType;
 
     GaussContext context;
@@ -36,8 +35,8 @@ public class GaussRecordComparer extends AbstractRecordComparer {
         this.dbType = dbType;
         this.context = context;
         Table tableMeta = context.getTableMeta();
-        this.orinTableName = tableMeta.getFullName();
-        this.compareTableName = tableMeta.getSchema() + ".A" + tableMeta.getName() + "_dataChecker";
+        this.orinTableName = "\"" + tableMeta.getSchema() + "\".\"" + tableMeta.getName() + "\"";
+        this.compareTableName = "\"" + tableMeta.getSchema() + "\".\"" + tableMeta.getName() + "_dataChecker";
     }
 
     @Override
@@ -51,8 +50,8 @@ public class GaussRecordComparer extends AbstractRecordComparer {
 
     @Override
     public void compare() throws GaussException {
-        SqlTemplate sqlTemplate = new SqlTemplate(dbType, context);
-        compareSql = sqlTemplate.getCompareSql();
+        OpenGaussUtil openGaussUtil = new OpenGaussUtil(context);
+        String compareSql = openGaussUtil.getCompareSql();
         JdbcTemplate jdbcTemplate = new JdbcTemplate(context.getTargetDs());
         jdbcTemplate.execute("set query_dop to " + query_dop + ";");
         SqlRowSet result = jdbcTemplate.queryForRowSet(compareSql);
@@ -66,17 +65,18 @@ public class GaussRecordComparer extends AbstractRecordComparer {
             }
         }
         if (!diffSource.isEmpty()) {
+            SqlFactory sqlFactory = new SqlFactory();
             GaussUtils.outputUnnormal("Source table : " + orinTableName);
-            searchFromDb(sqlTemplate.getSearchSql(diffSource),dbType);
+            searchFromDb(sqlFactory.getSqlTemplate(dbType, context).getSearchSql(diffSource),dbType);
         }
 
         if (!diffTarget.isEmpty()) {
             GaussUtils.outputUnnormal("Target table : " + orinTableName);
-            searchFromDb(new SqlTemplate(DbType.OPGS, context).getSearchSql(diffTarget),DbType.OPGS);
+            searchFromDb(openGaussUtil.getSearchSql(diffTarget), DbType.OPGS);
         }
 
-        jdbcTemplate.execute("drop table " + compareTableName + "A;");
-        jdbcTemplate.execute("drop table " + compareTableName + "B;");
+        jdbcTemplate.execute("drop table " + compareTableName + "A\";");
+        jdbcTemplate.execute("drop table " + compareTableName + "B\";");
     }
 
     public void searchFromDb(String searchSql, DbType dbType) {

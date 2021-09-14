@@ -7,15 +7,14 @@ import java.sql.Statement;
 import java.util.List;
 import java.util.concurrent.LinkedBlockingQueue;
 
+import com.gauss.common.db.sql.*;
 import org.apache.commons.lang.StringUtils;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.StatementCallback;
 
-import com.gauss.common.db.sql.SqlTemplate;
 import com.gauss.common.model.DbType;
-import com.gauss.common.utils.GaussUtils;
 import com.gauss.extractor.AbstractRecordExtractor;
 import com.google.common.collect.Lists;
 import com.gauss.common.model.ExtractStatus;
@@ -47,16 +46,9 @@ public class DbOnceFullRecordExtractor extends AbstractRecordExtractor {
     public void start() {
         super.start();
         if (StringUtils.isEmpty(extractSql)) {
-            SqlTemplate sqlTemplate;
-            if (dbType == DbType.MYSQL) {
-                sqlTemplate = new SqlTemplate(DbType.MYSQL, context);
-                extractSql = sqlTemplate.getExtractSql();
-            } else if (dbType == DbType.ORACLE) {
-                sqlTemplate = new SqlTemplate(DbType.ORACLE, context);
-                extractSql = sqlTemplate.getExtractSql();
-            } else {
-                //todo
-            }
+            SqlFactory sqlFactory = new SqlFactory();
+            SqlTemplate sqlTemplate = sqlFactory.getSqlTemplate(dbType, context);
+            extractSql = sqlTemplate.getExtractSql();
         }
 
         // 启动异步线程
