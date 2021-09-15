@@ -65,10 +65,6 @@ public class GaussInstance extends AbstractGaussLifeCycle {
 
     private String tableShitKey;
 
-    private int retryTimes = 1;
-
-    private int retryInterval;
-
     private int noUpdateTimes = 0;
 
     private boolean concurrent = true;
@@ -110,48 +106,21 @@ public class GaussInstance extends AbstractGaussLifeCycle {
             worker = new Thread(new Runnable() {
 
                 public void run() {
+                    MDC.remove(GaussConstants.MDC_TABLE_SHIT_KEY);
+                    logger.info("table[{}] is start", context.getTableMeta().getFullName());
+
                     try {
-                        for (int i = 0; i < retryTimes; i++) {
-                            MDC.remove(GaussConstants.MDC_TABLE_SHIT_KEY);
-                            if (i > 0) {
-                                logger.info("table[{}] is start , retrying ", context.getTableMeta().getFullName());
-                            } else {
-                                logger.info("table[{}] is start", context.getTableMeta().getFullName());
-                            }
-
-                            try {
-                                processTable();
-                                exception = null;
-                                break;
-                            } catch (GaussException e) {
-                                exception = e;
-                                if (processException(e, i)) {
-                                    break;
-                                }
-                                GaussUtils.outputUnnormal(context.getTableMeta().getFullName());
-                            } finally {
-                                MDC.remove(GaussConstants.MDC_TABLE_SHIT_KEY);
-                            }
-                        }
-
-                        if (exception == null) {
-                            // 记录到总文件下
-                            logger.info("table[{}] is end", context.getTableMeta().getFullName());
-                        } else if (ExceptionUtils.getRootCause(exception) instanceof InterruptedException) {
-                            progressTracer.update(context.getTableMeta().getFullName(), ProgressStatus.FAILED);
-                            logger.info("table[{}] is interrpt ,current status:{} !",
-                                context.getTableMeta().getFullName(), extractor.getStatus());
-                        } else {
-                            progressTracer.update(context.getTableMeta().getFullName(), ProgressStatus.FAILED);
-                            logger.info("table[{}] is error , current status:{} !",
-                                context.getTableMeta().getFullName(), extractor.getStatus());
-                        }
+                        processTable();
+                    } catch (GaussException e) {
+                        exception = e;
+                        GaussUtils.outputUnnormal(context.getTableMeta().getFullName());
+                        progressTracer.update(context.getTableMeta().getFullName(), ProgressStatus.FAILED);
+                        logger.info("table[{}] is interrpt ,current status:{} !",
+                            context.getTableMeta().getFullName(), extractor.getStatus());
                     } finally {
-                        tableController.release(GaussInstance.this);
-                        // 标记为成功
-                        mutex.countDown();
+                        logger.info("table[{}] is end", context.getTableMeta().getFullName());
+                        MDC.remove(GaussConstants.MDC_TABLE_SHIT_KEY);
                     }
-
                 }
 
                 private void processTable() {
@@ -171,22 +140,10 @@ public class GaussInstance extends AbstractGaussLifeCycle {
                             RecordDumper.dumpExtractorInfo(batchId.incrementAndGet(), records);
 
                             // insert checksum into target database
-                            Throwable applierException = null;
-                            for (int i = 0; i < retryTimes; i++) {
-                                try {
-                                    applier.apply(records);
-                                    applierException = null;
-                                    break;
-                                } catch (Throwable e) {
-                                    applierException = e;
-                                    if (processException(e, i)) {
-                                        break;
-                                    }
-                                }
-                            }
-
-                            if (applierException != null) {
-                                throw applierException;
+                            try {
+                                applier.apply(records);
+                            } catch (Throwable e) {
+                                throw e;
                             }
 
                             RecordDumper.dumpApplierInfo(batchId.get(), records, records);
@@ -203,12 +160,11 @@ public class GaussInstance extends AbstractGaussLifeCycle {
                             }
 
                         } while (status != ExtractStatus.TABLE_END);
-                        while (true) {
-                            if (preparer.getStatus() == PrepareStatus.END) {
-                                comparer.compare();
-                                break;
-                            }
-                            Thread.sleep(100);
+                        preparer.prepareThread.join();
+                        if (preparer.isSuccess()) {
+                            comparer.compare();
+                        } else {
+                            throw new InterruptedException();
                         }
                         logger.info("table[{}] is end by {}", context.getTableMeta().getFullName(), status);
                         statAggregation.print();
@@ -217,25 +173,6 @@ public class GaussInstance extends AbstractGaussLifeCycle {
                     } catch (Throwable e) {
                         throw new GaussException(e);
                     }
-                }
-
-                private boolean processException(Throwable e, int i) {
-                    if (!(ExceptionUtils.getRootCause(e) instanceof InterruptedException)) {
-                        logger.error("retry {} ,something error happened. caused by {}", (i + 1),
-                            ExceptionUtils.getFullStackTrace(e));
-                        try {
-                            Thread.sleep(retryInterval);
-                        } catch (InterruptedException e1) {
-                            exception = new GaussException(e1);
-                            Thread.currentThread().interrupt();
-                            return true;
-                        }
-                    } else {
-                        // interrupt事件，响应退出
-                        return true;
-                    }
-
-                    return false;
                 }
 
             });
@@ -247,19 +184,20 @@ public class GaussInstance extends AbstractGaussLifeCycle {
             logger.info("table[{}] start successful. extractor:{} , applier:{}", new Object[] {
                 context.getTableMeta().getFullName(), extractor.getClass().getName(), applier.getClass().getName()
             });
+            worker.join();
         } catch (InterruptedException e) {
             progressTracer.update(context.getTableMeta().getFullName(), ProgressStatus.FAILED);
             exception = new GaussException(e);
-            mutex.countDown();
-            tableController.release(this); // 释放下
             Thread.currentThread().interrupt();
         } catch (Throwable e) {
             progressTracer.update(context.getTableMeta().getFullName(), ProgressStatus.FAILED);
             exception = new GaussException(e);
-            mutex.countDown();
             logger.error("table[{}] start failed caused by {}", context.getTableMeta().getFullName(),
                 ExceptionUtils.getFullStackTrace(e));
-            tableController.release(this); // 释放下
+        } finally {
+            preparer.dropTable();
+            mutex.countDown();
+            tableController.release(GaussInstance.this);
         }
     }
 
@@ -352,14 +290,6 @@ public class GaussInstance extends AbstractGaussLifeCycle {
 
     public void setStatAggregation(StatAggregation statAggregation) {
         this.statAggregation = statAggregation;
-    }
-
-    public void setRetryTimes(int retryTimes) {
-        this.retryTimes = retryTimes;
-    }
-
-    public void setRetryInterval(int retryInterval) {
-        this.retryInterval = retryInterval;
     }
 
     public void setTargetDbType(DbType targetDbType) {

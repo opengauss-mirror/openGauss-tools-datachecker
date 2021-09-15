@@ -107,8 +107,6 @@ public class GaussController extends AbstractGaussLifeCycle {
 
         tableController = new TableController(tableMetas.size(), threadSize);
         progressTracer = new ProgressTracer(tableMetas.size());
-        int retryTimes = config.getInt("gauss.table.retry.times", 3);
-        int retryInterval = config.getInt("gauss.table.retry.interval", 1000);
 
         boolean useExtractorExecutor = config.getBoolean("gauss.extractor.concurrent.global", false);
         boolean useApplierExecutor = config.getBoolean("gauss.applier.concurrent.global", false);
@@ -137,8 +135,6 @@ public class GaussController extends AbstractGaussLifeCycle {
             instance.setComparer(new GaussRecordComparer(sourceDbType, context, query_dop));
             instance.setTableController(tableController);
             instance.setStatAggregation(statAggregation);
-            instance.setRetryTimes(retryTimes);
-            instance.setRetryInterval(retryInterval);
             instance.setTargetDbType(targetDbType);
             instance.setProgressTracer(progressTracer);
             instance.setThreadSize(config.getInt("gauss.extractor.concurrent.size", 300));
