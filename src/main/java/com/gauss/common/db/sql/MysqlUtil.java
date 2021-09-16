@@ -21,6 +21,8 @@ public class MysqlUtil implements SqlTemplate {
 
     static final String convertFloat = "round(convert(`%s`, char), 10)";
 
+    static final String convertBit = "`%s`+0";
+
     static final String convertGeo = "substring(AsText(`%s`), 6)";
 
     static final String convertVarchar = "lower(hex(trim(TRAILING '\\0' from `%s`)))";
@@ -40,7 +42,6 @@ public class MysqlUtil implements SqlTemplate {
         for (ColumnMeta meta : columns) {
             switch (meta.getType()) {
                 case Types.BOOLEAN:
-                case Types.BIT:
                 case Types.CHAR:
                     sb.append(String.format(convertChar, meta.getName()));
                     break;
@@ -48,6 +49,9 @@ public class MysqlUtil implements SqlTemplate {
                 case Types.FLOAT:
                 case Types.DOUBLE:
                     sb.append(String.format(convertFloat, meta.getName()));
+                    break;
+                case Types.BIT:
+                    sb.append(String.format(convertBit, meta.getName()));
                     break;
                 case Types.VARBINARY:
                 case Types.BINARY:

@@ -5,6 +5,7 @@ import com.gauss.common.db.sql.OpenGaussUtil;
 import com.gauss.common.model.GaussContext;
 import com.gauss.common.model.PrepareStatus;
 import com.gauss.common.utils.thread.NamedThreadFactory;
+import com.gauss.exception.GaussException;
 
 import org.apache.commons.lang.StringUtils;
 import org.springframework.dao.DataAccessException;
@@ -21,9 +22,17 @@ public class GaussRecordPreparer extends AbstractRecordPreparer {
 
     GaussContext context;
 
-    private Thread prepareThread = null;
+    public Thread prepareThread = null;
 
     String compareTableName;
+
+    JdbcTemplate jdbcTemplate;
+
+    private volatile boolean success = true;
+
+    public boolean isSuccess() {
+        return success;
+    }
 
     public GaussRecordPreparer(GaussContext context, int query_dop) {
         this.context = context;
@@ -35,11 +44,9 @@ public class GaussRecordPreparer extends AbstractRecordPreparer {
     @Override
     public void start() {
         super.start();
-        JdbcTemplate jdbcTemplate = new JdbcTemplate(context.getTargetDs());
-        jdbcTemplate.execute("drop table if exists " + compareTableName + "A\";");
-        jdbcTemplate.execute("create unlogged table " + compareTableName + "A\"(checksumA text);");
-        jdbcTemplate.execute("drop table if exists " + compareTableName + "B\";");
-        jdbcTemplate.execute("create unlogged table " + compareTableName + "B\"(checksumB text);");
+        jdbcTemplate = new JdbcTemplate(context.getTargetDs());
+        dropTable();
+        createTable();
         if (StringUtils.isEmpty(prepareSql)) {
             OpenGaussUtil openGaussUtil = new OpenGaussUtil(context);
             prepareSql = openGaussUtil.getPrepareSql();
@@ -56,6 +63,11 @@ public class GaussRecordPreparer extends AbstractRecordPreparer {
     public void stop() {
         super.stop();
         prepareThread.interrupt();
+        try {
+            prepareThread.join(2 * 1000);
+        } catch (InterruptedException e) {
+            // ignore
+        }
     }
 
     public class Preparer implements Runnable {
@@ -69,12 +81,26 @@ public class GaussRecordPreparer extends AbstractRecordPreparer {
         public void run() {
             jdbcTemplate.execute("set query_dop to " + query_dop + ";");
             jdbcTemplate.execute(new StatementCallback() {
-                public Object doInStatement(Statement stmt) throws SQLException, DataAccessException {
-                    stmt.execute(prepareSql);
+                public Object doInStatement(Statement stmt) {
+                    try {
+                        stmt.execute(prepareSql);
+                    } catch (SQLException e) {
+                        success = false;
+                        throw new GaussException(e);
+                    }
                     return null;
                 }
             });
             setStatus(PrepareStatus.END);
         }
+    }
+
+    public void createTable() {
+        jdbcTemplate.execute("create unlogged table " + compareTableName + "A\"(checksumA text);");
+        jdbcTemplate.execute("create unlogged table " + compareTableName + "B\"(checksumB text);");
+    }
+    public void dropTable() {
+        jdbcTemplate.execute("drop table if exists " + compareTableName + "A\";");
+        jdbcTemplate.execute("drop table if exists " + compareTableName + "B\";");
     }
 }

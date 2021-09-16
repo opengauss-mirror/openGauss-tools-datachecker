@@ -48,6 +48,7 @@ public class GaussRecordComparer extends AbstractRecordComparer {
         super.stop();
     }
 
+
     @Override
     public void compare() throws GaussException {
         OpenGaussUtil openGaussUtil = new OpenGaussUtil(context);
