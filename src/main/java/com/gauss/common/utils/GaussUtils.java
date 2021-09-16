@@ -157,11 +157,9 @@ public class GaussUtils {
     //输出有问题的schema.table到日志
     public static void outputUnnormal(String tableStr) {
         if (unnormal.isEmpty()) {
-            System.out.println("\n The tables which match failed : \n\n");
             logger.info("The tables which match failed : \n\n");
         }
         logger.info(tableStr +"\n");
-        System.out.println(tableStr +"\n");
         unnormal.add(tableStr);
     }
 }

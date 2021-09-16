@@ -102,7 +102,7 @@ public class GaussRecordComparer extends AbstractRecordComparer {
             }
 
             Record re = new Record(context.getTableMeta().getSchema(), context.getTableMeta().getName(), cms);
-            RecordDiffer.diff(re);
+            RecordDiffer.diff(dbType, re);
         }
     }
 
