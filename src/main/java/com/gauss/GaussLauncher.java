@@ -62,6 +62,7 @@ public class GaussLauncher {
             }
             summaryLogger.info("End time : " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()) + "\n");
             logger.info("## DataChecker is down.");
+            logger.info("Please check log for more information.");
         } catch (Throwable e) {
             logger.error("## Something goes wrong when starting up the DataChecker:\n{}",
                 ExceptionUtils.getFullStackTrace(e));

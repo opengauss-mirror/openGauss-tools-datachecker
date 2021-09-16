@@ -1,7 +1,6 @@
 <configuration scan="true" scanPeriod=" 5 seconds">
     <jmxConfigurator/>
     <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
-        <filter class="com.gauss.common.utils.ConsoleFilter"/>
         <encoder>
             <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{56} - %msg%n
             </pattern>
@@ -164,8 +163,8 @@
     </logger>
 
     <root level="INFO">
-        <appender-ref ref="GAUSS-ROOT"/>
         <appender-ref ref="STDOUT"/>
+        <appender-ref ref="GAUSS-ROOT"/>
     </root>
 
 </configuration>

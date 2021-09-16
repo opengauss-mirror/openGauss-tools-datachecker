@@ -72,8 +72,8 @@ public class DbOnceFullRecordExtractor extends AbstractRecordExtractor {
     @Override
     public void stop() {
         super.stop();
-
         extractorThread.interrupt();
+        
         try {
             extractorThread.join(2 * 1000);
         } catch (InterruptedException e) {
@@ -152,7 +152,7 @@ public class DbOnceFullRecordExtractor extends AbstractRecordExtractor {
             jdbcTemplate.execute(new StatementCallback() {
 
                 public Object doInStatement(Statement stmt) throws SQLException, DataAccessException {
-                    stmt.setFetchSize(200);
+                    stmt.setFetchSize(Integer.MIN_VALUE);
                     stmt.execute(extractSql);
                     ResultSet rs = stmt.getResultSet();
                     while (rs.next()) {
