@@ -16,7 +16,6 @@ public class Table {
     private String           type;
     private String           schema;
     private String           name;
-    private List<ColumnMeta> primaryKeys = Lists.newArrayList();
     private List<ColumnMeta> columns     = Lists.newArrayList();
 
     public Table(String type, String schema, String name){
@@ -29,7 +28,6 @@ public class Table {
         this.type = type;
         this.schema = schema;
         this.name = name;
-        this.primaryKeys = primaryKeys;
         this.columns = columns;
     }
 
@@ -45,59 +43,12 @@ public class Table {
         return schema;
     }
 
-    public void setSchema(String schema) {
-        this.schema = schema;
-    }
-
     public String getName() {
         return name;
     }
 
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public List<ColumnMeta> getPrimaryKeys() {
-        return primaryKeys;
-    }
-
-    public void setPrimaryKeys(List<ColumnMeta> primaryKeys) {
-        this.primaryKeys = primaryKeys;
-    }
-
-    public void addPrimaryKey(ColumnMeta primaryKey) {
-        this.primaryKeys.add(primaryKey);
-    }
-
     public List<ColumnMeta> getColumns() {
         return columns;
-    }
-
-    public void setColumns(List<ColumnMeta> columns) {
-        this.columns = columns;
-    }
-
-    public void addColumn(ColumnMeta column) {
-        this.columns.add(column);
-    }
-
-    /**
-     * 返回所有字段信息，包括主键
-     */
-    public List<ColumnMeta> getColumnsWithPrimary() {
-        List<ColumnMeta> result = Lists.newArrayList(primaryKeys);
-        result.addAll(columns);
-        return result;
-    }
-
-    public boolean isPrimaryKey(String columnName) {
-        for (ColumnMeta col : primaryKeys) {
-            if (StringUtils.equalsIgnoreCase(col.getName(), columnName)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**

@@ -376,19 +376,6 @@ public class GaussController extends AbstractGaussLifeCycle {
         return false;
     }
 
-    @SuppressWarnings("unused")
-    private boolean isOnlyOnePk(Table table) {
-        return table.getPrimaryKeys() != null && table.getPrimaryKeys().size() == 1;
-    }
-
-    private boolean isOnlyPkIsNumber(Table table) {
-        if (table.getPrimaryKeys() != null && table.getPrimaryKeys().size() == 1) {
-            return GaussUtils.isNumber(table.getPrimaryKeys().get(0).getType());
-        }
-
-        return false;
-    }
-
     private void processException(Table table, Exception e) {
         MDC.remove(GaussConstants.MDC_TABLE_SHIT_KEY);
         abort("process table[" + table.getFullName() + "] has error!", e);
@@ -442,15 +429,5 @@ public class GaussController extends AbstractGaussLifeCycle {
             return true;
         }
 
-    }
-
-    @SuppressWarnings("unused")
-    private void preCheckMlogGrant(DataSource ds) {
-        JdbcTemplate jdbcTemplate = new JdbcTemplate(ds);
-        String mlogName = "migrate" + System.nanoTime();
-        logger.info("check mlog privileges ...");
-        jdbcTemplate.execute("CREATE MATERIALIZED VIEW " + mlogName + " AS SELECT SYSDATE FROM DUAL");
-        jdbcTemplate.execute("DROP MATERIALIZED VIEW " + mlogName);
-        logger.info("check mlog privileges is ok");
     }
 }
