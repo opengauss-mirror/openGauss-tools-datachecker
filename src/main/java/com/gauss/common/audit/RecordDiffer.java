@@ -37,7 +37,7 @@ public class RecordDiffer {
             record.getSchemaName(),
             record.getTableName(),
             record.getColumns(),
-            "record not found"));
+            "record not found in opposite database"));
     }
 
     private static String diffMessage(DbType dbType, String schemaName, String tableName, List<ColumnValue> primaryKeys, String message) {
