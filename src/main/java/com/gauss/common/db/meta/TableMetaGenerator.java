@@ -31,8 +31,8 @@ public class TableMetaGenerator {
 
             public Object doInConnection(Connection conn) throws SQLException, DataAccessException {
                 DatabaseMetaData metaData = conn.getMetaData();
-                String sName = getIdentifierName(schemaName, metaData);
-                String tName = getIdentifierName(tableName, metaData);
+                String sName = schemaName;
+                String tName = tableName;
 
                 ResultSet rs = null;
                 rs = metaData.getTables(sName, sName, tName, new String[] { "TABLE" });
@@ -93,8 +93,8 @@ public class TableMetaGenerator {
                 DatabaseMetaData metaData = conn.getMetaData();
                 List<Table> result = Lists.newArrayList();
                 String databaseName = metaData.getDatabaseProductName();
-                String sName = getIdentifierName(schemaName, metaData);
-                String tName = getIdentifierName(tableName, metaData);
+                String sName = schemaName;
+                String tName = tableName;
                 ResultSet rs = null;
                 Table table = null;
                 Statement stmt = conn.createStatement();
@@ -165,21 +165,6 @@ public class TableMetaGenerator {
             }
         });
 
-    }
-
-    /**
-     * get Identifier Name
-     */
-    private static String getIdentifierName(String name, DatabaseMetaData metaData) throws SQLException {
-        if (metaData.storesMixedCaseIdentifiers()) {
-            return name;
-        } else if (metaData.storesUpperCaseIdentifiers()) {
-            return StringUtils.upperCase(name);
-        } else if (metaData.storesLowerCaseIdentifiers()) {
-            return StringUtils.lowerCase(name);
-        } else {
-            return name;
-        }
     }
 
     private static int convertSqlType(int columnType, String typeName) {

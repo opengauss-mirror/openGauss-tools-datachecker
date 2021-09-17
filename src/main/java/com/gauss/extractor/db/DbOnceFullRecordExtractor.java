@@ -152,7 +152,7 @@ public class DbOnceFullRecordExtractor extends AbstractRecordExtractor {
             jdbcTemplate.execute(new StatementCallback() {
 
                 public Object doInStatement(Statement stmt) throws SQLException, DataAccessException {
-                    stmt.setFetchSize(Integer.MIN_VALUE);
+                    stmt.setFetchSize(0);
                     stmt.execute(extractSql);
                     ResultSet rs = stmt.getResultSet();
                     while (rs.next()) {
