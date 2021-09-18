@@ -124,7 +124,7 @@ then
 	echo LOG CONFIGURATION : $logback_configurationFile
 	echo datachecker conf : $gauss_conf
 	echo CLASSPATH :$CLASSPATH
-	$JAVA $JAVA_OPTS $JAVA_DEBUG_OPT $DATACHECKER_OPTS -classpath .:$CLASSPATH com.gauss.GaussLauncher 1>>$base/logs/gauss/table.log 2>&1 &
+	$JAVA $JAVA_OPTS $JAVA_DEBUG_OPT $DATACHECKER_OPTS -classpath .:$CLASSPATH com.gauss.GaussLauncher
 	echo $! > $base/bin/datachecker.pid
 
 	echo "cd to $current_path for continue"

@@ -117,23 +117,23 @@ public class DbOnceFullRecordExtractor extends AbstractRecordExtractor {
         public void run() {
             jdbcTemplate.execute("SET NAMES utf8;");
             jdbcTemplate.execute(new ConnectionCallback() {
-                public Object doInConnection(Connection conn) throws SQLException, DataAccessException {
-                    Statement stmt = conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
-                    stmt.setFetchSize(Integer.MIN_VALUE);
-                    stmt.setFetchDirection(ResultSet.FETCH_REVERSE);
-                    stmt.execute(extractSql);
-                    ResultSet rs = stmt.getResultSet();
-                    while (rs.next()) {
-                        try {
+                public Object doInConnection(Connection conn) {
+                    try {
+                        Statement stmt = conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+                        stmt.setFetchSize(Integer.MIN_VALUE);
+                        stmt.setFetchDirection(ResultSet.FETCH_REVERSE);
+                        stmt.execute(extractSql);
+                        ResultSet rs = stmt.getResultSet();
+                        while (rs.next()) {
                             queue.put(rs.getString(1));
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt(); // 传递
-                            throw new GaussException(e);
                         }
+                        rs.close();
+                        stmt.close();
+                    } catch (SQLException | InterruptedException e) {
+                        throw new GaussException(e);
+                    } finally {
+                        setStatus(ExtractStatus.TABLE_END);
                     }
-                    setStatus(ExtractStatus.TABLE_END);
-                    rs.close();
-                    stmt.close();
                     return null;
                 }
             });
@@ -151,21 +151,20 @@ public class DbOnceFullRecordExtractor extends AbstractRecordExtractor {
         public void run() {
             jdbcTemplate.execute(new StatementCallback() {
 
-                public Object doInStatement(Statement stmt) throws SQLException, DataAccessException {
-                    stmt.setFetchSize(0);
-                    stmt.execute(extractSql);
-                    ResultSet rs = stmt.getResultSet();
-                    while (rs.next()) {
-                        try {
+                public Object doInStatement(Statement stmt) throws SQLException {
+                    try {
+                        stmt.setFetchSize(0);
+                        stmt.execute(extractSql);
+                        ResultSet rs = stmt.getResultSet();
+                        while (rs.next()) {
                             queue.put(rs.getString(1));
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt(); // 传递
-                            throw new GaussException(e);
                         }
+                        rs.close();
+                    } catch (SQLException | InterruptedException e) {
+                        throw new GaussException(e);
+                    } finally {
+                        setStatus(ExtractStatus.TABLE_END);
                     }
-
-                    setStatus(ExtractStatus.TABLE_END);
-                    rs.close();
                     return null;
                 }
             });

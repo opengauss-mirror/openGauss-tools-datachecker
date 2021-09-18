@@ -313,7 +313,6 @@ public class GaussController extends AbstractGaussLifeCycle {
         }
 
         List<TableHolder> tables = Lists.newArrayList();
-        DbType targetDbType = GaussUtils.judgeDbType(globalContext.getTargetDs());
         if (!isEmpty) {
             for (Object obj : tableWhiteList) {
                 String whiteTable = getTable((String) obj);
