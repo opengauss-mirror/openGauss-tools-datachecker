@@ -13,6 +13,7 @@ import java.util.concurrent.TimeUnit;
 
 import javax.sql.DataSource;
 
+import com.gauss.common.utils.Quote;
 import org.apache.commons.configuration.Configuration;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.MDC;
@@ -36,7 +37,6 @@ import com.gauss.common.model.GaussContext;
 import com.gauss.common.stats.ProgressTracer;
 import com.gauss.common.stats.StatAggregation;
 import com.gauss.common.utils.LikeUtil;
-import com.gauss.common.utils.GaussUtils;
 import com.gauss.common.utils.thread.NamedThreadFactory;
 import com.gauss.exception.GaussException;
 import com.gauss.extractor.RecordExtractor;
@@ -86,6 +86,9 @@ public class GaussController extends AbstractGaussLifeCycle {
         this.sourceDbType = DbType.valueOf(StringUtils.upperCase(config.getString("gauss.database.source.type")));
         this.targetDbType = DbType.valueOf(StringUtils.upperCase(config.getString("gauss.database.target.type")));
         this.globalContext = initGlobalContext();
+
+        prepareBeforeStart();
+        Quote.ins.setSourceType(sourceDbType);
 
         int statBufferSize = config.getInt("gauss.stat.buffer.size", 16384);
         int statPrintInterval = config.getInt("gauss.stat.print.interval", 5);
@@ -183,7 +186,7 @@ public class GaussController extends AbstractGaussLifeCycle {
                 try {
                     instance.waitForDone();
                 } catch (Exception e) {
-                    processException(instance.getContext().getTableMeta(), e);
+                    logger.error("wait failed", e);
                 }
 
                 instance.stop();
@@ -200,6 +203,7 @@ public class GaussController extends AbstractGaussLifeCycle {
     @Override
     public void stop() {
         super.stop();
+        cleanBeforeEnd();
         for (GaussInstance instance : instances) {
             if (instance.isStart()) {
                 instance.stop();
@@ -375,12 +379,6 @@ public class GaussController extends AbstractGaussLifeCycle {
         return false;
     }
 
-    private void processException(Table table, Exception e) {
-        MDC.remove(GaussConstants.MDC_TABLE_SHIT_KEY);
-        abort("process table[" + table.getFullName() + "] has error!", e);
-        System.exit(-1);// 串行时，出错了直接退出jvm
-    }
-
     private String getTable(String tableName) {
         String[] paramArray = tableName.split("#");
         if (paramArray.length >= 1 && !"".equals(paramArray[0])) {
@@ -388,6 +386,60 @@ public class GaussController extends AbstractGaussLifeCycle {
         } else {
             return null;
         }
+    }
+
+    private void prepareBeforeStart() {
+        if (sourceDbType != DbType.ORACLE) {
+            return;
+        }
+        logger.info("create some function to assist checker");
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(globalContext.getSourceDs());
+        jdbcTemplate.execute("CREATE OR REPLACE FUNCTION datachecker_md5(in_str IN VARCHAR2)" +
+                " RETURN VARCHAR2" +
+                " IS" +
+                " retval varchar2(32);" +
+                " BEGIN" +
+                " if in_str is not null then" +
+                "     retval := lower(utl_raw.cast_to_raw(DBMS_OBFUSCATION_TOOLKIT.MD5(INPUT_STRING => in_str)));" +
+                " else" +
+                "     retval := null;" +
+                " end if;" +
+                " RETURN retval;" +
+                " END;");
+        jdbcTemplate.execute("CREATE OR REPLACE FUNCTION datachecker_get_bfile( p_bfile IN BFILE ) RETURN" +
+                " VARCHAR2" +
+                "   AS" +
+                "         filecontent BLOB := NULL;" +
+                "         src_file BFILE := NULL;" +
+                "         l_step PLS_INTEGER := 12000;" +
+                "         l_dir   VARCHAR2(4000);" +
+                "         l_fname VARCHAR2(4000);" +
+                "         offset NUMBER := 1;" +
+                "   BEGIN" +
+                "     IF p_bfile IS NULL THEN" +
+                "       RETURN NULL;" +
+                "     END IF;" +
+                "     DBMS_LOB.FILEGETNAME( p_bfile, l_dir, l_fname );" +
+                "     src_file := BFILENAME( l_dir, l_fname );" +
+                "     IF src_file IS NULL THEN" +
+                "         RETURN NULL;" +
+                "     END IF;" +
+                "     DBMS_LOB.FILEOPEN(src_file, DBMS_LOB.FILE_READONLY);" +
+                "     DBMS_LOB.CREATETEMPORARY(filecontent, true);" +
+                "     DBMS_LOB.LOADBLOBFROMFILE (filecontent, src_file, DBMS_LOB.LOBMAXSIZE, offset, offset);" +
+                "     DBMS_LOB.FILECLOSE(src_file);" +
+                "     return UTL_RAW.CAST_TO_VARCHAR2(filecontent);" +
+                " END;");
+    }
+
+    private void cleanBeforeEnd() {
+        if (sourceDbType != DbType.ORACLE) {
+            return;
+        }
+        logger.info("clean function created by datachecker");
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(globalContext.getSourceDs());
+        jdbcTemplate.execute("drop function datachecker_md5");
+        jdbcTemplate.execute("drop function datachecker_get_bfile");
     }
 
     private static class TableHolder {

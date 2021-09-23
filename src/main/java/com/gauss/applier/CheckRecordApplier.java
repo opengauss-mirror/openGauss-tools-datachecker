@@ -6,6 +6,8 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
 
+import com.gauss.common.model.DbType;
+import com.gauss.common.utils.Quote;
 import org.apache.commons.lang.exception.ExceptionUtils;
 import org.postgresql.copy.CopyManager;
 import org.postgresql.core.BaseConnection;
@@ -30,12 +32,17 @@ public class CheckRecordApplier extends AbstractGaussLifeCycle implements Record
 
     protected GaussContext context;
     private int query_dop;
+    String compareTableName;
 
     private static final String SEPARATOR = System.lineSeparator();
 
     public CheckRecordApplier(GaussContext context, int query_dop) {
         this.context = context;
         this.query_dop = query_dop;
+        Table tableMeta = context.getTableMeta();
+        this.compareTableName =  Quote.join("",
+                Quote.ins.quote(tableMeta.getSchema()), ".",
+                Quote.ins.quote(tableMeta.getName() + "_dataCheckerA"));
     }
 
     @Override
@@ -65,9 +72,7 @@ public class CheckRecordApplier extends AbstractGaussLifeCycle implements Record
                 StringBuilder buffer = new StringBuilder();
                 records.stream().forEach((String record) -> {buffer.append(record).append(SEPARATOR);});
 
-                Table tableMeta = context.getTableMeta();
-                String compareTableName = "\"" + tableMeta.getSchema() + "\".\"" + tableMeta.getName();
-                String sql = "copy " + compareTableName + "_dataCheckerA\" " + "from stdin";
+                String sql = "copy " + compareTableName + " from stdin";
                 BaseConnection baseConn = (BaseConnection) (connection.getMetaData().getConnection());
                 CopyManager cp = new CopyManager(baseConn);
                 StringReader reader = new StringReader(buffer.toString());

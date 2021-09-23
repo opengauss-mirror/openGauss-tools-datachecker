@@ -1,87 +1,94 @@
 /*
  * Copyright (c) 2021 Huawei Technologies Co.,Ltd.
  */
-
 package com.gauss.common.db.sql;
 
 import com.gauss.common.db.meta.ColumnMeta;
-import com.gauss.common.db.meta.Table;
 import com.gauss.common.model.GaussContext;
+import com.gauss.common.utils.Quote;
 
 import java.sql.Types;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class OpenGaussUtil implements SqlTemplate {
-    private String compareTableName;
+public abstract class OpenGaussUtil extends SqlTemplate {
+    private String srcCompareTableName;
+
+    private String destCompareTableName;
 
     private String orinTableName;
 
     private GaussContext context;
 
-    static final String convertBit = "cast(\"%s\" as int)";
+    private String concatStart;
 
-    static final String convertChar = "cast(\"%s\" as varchar)";
+    private String concatEnd;
 
-    static final String convertFloat = "round(\"%s\"::numeric, 10)";
+    private String delimiter;
 
-    static final String convertGeo = "replace(cast(\"%s\" as varchar),',',' ')";
+    private String quote;
 
-    static final String convertVarchar = "substring(cast(\"%s\" as varchar) from 3)";
+    public OpenGaussUtil(GaussContext context) {this.context = context;};
 
-    static final String convertDefault = "\"%s\"";
+    static final String convertBit = "cast(%s as int)";
 
-    public OpenGaussUtil(GaussContext context) {
-        this.context = context;
-        Table tableMeta = context.getTableMeta();
-        this.orinTableName = "\"" + tableMeta.getSchema() + "\".\"" + tableMeta.getName() + "\"";
-        this.compareTableName = "\"" + tableMeta.getSchema() + "\".\"" + tableMeta.getName() + "_dataChecker";
+    static final String convertChar = "cast(%s as varchar)";
+
+    static final String convertFloat = "round(%s::numeric, 10)";
+
+    static final String convertGeo = "replace(cast(%s as varchar),',',' ')";
+
+    static final String convertVarchar = "substring(cast(%s as varchar) from 3)";
+
+    static final String convertDefault = "%s";
+
+    static final String convertIntervalDay = "round((extract(day from %s) * 60 * 60 * 24 + extract(hour from %s)" +
+            " * 60 * 60 + extract(min from %s) * 60 + extract(second from %s))::numeric, 10)";
+
+    static final String convertIntervalYear = "extract(year from %s) * 12 + extract(month from %s)";
+
+    private String convert(ColumnMeta meta) {
+        String columnName = quote + meta.getName() + quote;
+        switch(meta.getType()) {
+            case Types.BOOLEAN:
+            case Types.BIT:
+                return String.format(convertBit, columnName);
+            case Types.CHAR:
+            case Types.ROWID:
+            case Types.SQLXML:
+                return String.format(convertChar, columnName);
+            case Types.REAL:
+            case Types.FLOAT:
+            case Types.DOUBLE:
+            case Types.NUMERIC:
+                return String.format(convertFloat, columnName);
+            case Types.VARBINARY:
+            case Types.BINARY:
+            case Types.LONGVARBINARY:
+                if (meta.getTypeName().equals("GEOMETRY")) {
+                    return String.format(convertGeo, columnName);
+                } else {
+                    return String.format(convertVarchar, columnName);
+                }
+            case INTERVAL_DAY:
+                return String.format(convertIntervalDay, columnName, columnName, columnName, columnName);
+            case INTERVAL_YEAR:
+                return String.format(convertIntervalYear, columnName, columnName);
+            default:
+                return String.format(convertDefault, columnName);
+        }
     }
 
     public String getMd5Sql() {
         StringBuilder sb = new StringBuilder();
         sb.append("md5(");
+        sb.append(concatStart);
         List<ColumnMeta> columns = context.getTableMeta().getColumns();
-        for (ColumnMeta meta : columns) {
-            switch (meta.getType()) {
-                case Types.BOOLEAN:
-                case Types.BIT:
-                    sb.append(String.format(convertBit, meta.getName()));
-                    break;
-                case Types.CHAR:
-                    sb.append(String.format(convertChar, meta.getName()));
-                    break;
-                case Types.REAL:
-                    //same as double
-                case Types.FLOAT:
-                    //same as double
-                case Types.DOUBLE:
-                    sb.append(String.format(convertFloat, meta.getName()));
-                    break;
-                case Types.VARBINARY:
-                case Types.BINARY:
-                case Types.LONGVARBINARY:
-                    if (meta.getTypeName().equals("GEOMETRY")) {
-                        sb.append(String.format(convertGeo, meta.getName()));
-                    } else {
-                        sb.append(String.format(convertVarchar, meta.getName()));
-                    }
-                    break;
-                default:
-                    sb.append(String.format(convertDefault, meta.getName()));
-                    break;
-            }
-            sb.append(" || ");
-        }
-        int length = sb.length();
-        sb.delete(length - 4, length);
+        sb.append(columns.stream().map(this::convert).collect(Collectors.joining(delimiter)));
+        sb.append(concatEnd);
         sb.append(")");
         return sb.toString();
-    }
-
-    public String getExtractSql() {
-        return null;
     }
 
     public String getSearchSql(ArrayList<String> md5list) {
@@ -94,12 +101,28 @@ public class OpenGaussUtil implements SqlTemplate {
     }
 
     public String getPrepareSql() {
-        String res = "insert into " + compareTableName + "B\" select " + getMd5Sql() + " from " + orinTableName + ";";
-        return res;
+        return Quote.join(" ",
+                "insert into", destCompareTableName, "select", getMd5Sql(), "from", orinTableName);
     }
 
     public String getCompareSql() {
-        return "select * from " + compareTableName + "A\" t1 full join " + compareTableName
-                + "B\" t2 on t1.checksumA=t2.checksumB where t2.checksumB is null or t1.checksumA is null;";
+        return Quote.join(" ",
+                "select * from", srcCompareTableName, "t1 full join", destCompareTableName,
+                "t2 on t1.checksumA=t2.checksumB where (t2.checksumB is null or t1.checksumA is null)",
+                "and (t2.checksumB is not null or t1.checksumA is not null);");
     }
+
+    public void setConcatStart(String concatStart) { this.concatStart = concatStart; }
+
+    public void setConcatEnd(String concatEnd) { this.concatEnd = concatEnd; }
+
+    public void setDelimiter(String delimiter) { this.delimiter = delimiter; }
+
+    public void setQuote(String quote) { this.quote = quote; }
+
+    public void setSrcCompareTableName(String srcCompareTableName) { this.srcCompareTableName = srcCompareTableName; }
+
+    public void setDestCompareTableName(String destCompareTableName) { this.destCompareTableName = destCompareTableName; }
+
+    public void setOrinTableName(String orinTableName) { this.orinTableName = orinTableName; }
 }

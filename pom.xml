@@ -105,8 +105,8 @@
         <!--maven properties -->
         <downloadSources>true</downloadSources>
         <!-- compiler settings properties -->
-        <java_source_version>1.8</java_source_version>
-        <java_target_version>1.8</java_target_version>
+        <java_source_version>8</java_source_version>
+        <java_target_version>8</java_target_version>
         <file_encoding>UTF-8</file_encoding>
     </properties>
 
