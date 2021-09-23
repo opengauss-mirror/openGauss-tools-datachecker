@@ -33,6 +33,18 @@ public class GaussUtils {
         return collection != null && collection.size() != 0;
     }
 
+    public static DbType judgeDbType(String databaseName) {
+        if (StringUtils.startsWithIgnoreCase(databaseName, "oracle")) {
+            return DbType.ORACLE;
+        } else if (StringUtils.startsWithIgnoreCase(databaseName, "mysql")) {
+            return DbType.MYSQL;
+        } else if (StringUtils.startsWithIgnoreCase(databaseName, "postgresql")) {
+            return DbType.OPGS;
+        } else {
+            throw new GaussException("unknow database type " + databaseName);
+        }
+    }
+
     /**
      * 根据DataSource判断一下数据库类型
      */
@@ -43,17 +55,8 @@ public class GaussUtils {
             public Object doInConnection(Connection c) throws SQLException, DataAccessException {
                 DatabaseMetaData meta = c.getMetaData();
                 String databaseName = meta.getDatabaseProductName();
-                String version = meta.getDatabaseProductVersion();
 
-                if (StringUtils.startsWithIgnoreCase(databaseName, "oracle")) {
-                    return DbType.ORACLE;
-                } else if (StringUtils.startsWithIgnoreCase(databaseName, "mysql")) {
-                    return DbType.MYSQL;
-                } else if (StringUtils.startsWithIgnoreCase(databaseName, "postgresql")) {
-                    return DbType.OPGS;
-                } else {
-                    throw new GaussException("unknow database type " + databaseName);
-                }
+                return judgeDbType(databaseName);
             }
         });
 

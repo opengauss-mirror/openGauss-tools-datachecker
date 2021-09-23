@@ -12,6 +12,8 @@ import java.util.List;
 import java.util.Set;
 import javax.sql.DataSource;
 
+import com.gauss.common.model.DbType;
+import com.gauss.common.utils.GaussUtils;
 import org.apache.commons.lang.StringUtils;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.ConnectionCallback;
@@ -97,10 +99,12 @@ public class TableMetaGenerator {
                 //Oracle
                 if (StringUtils.isEmpty(tableName)) {
                     // ignore system tales
-                    query = new StringBuffer("SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') AS SCHEMA_NAME , TABLE_NAME FROM USER_TABLES T , USER_USERS U WHERE U.USERNAME = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')");
+                    query = new StringBuffer("SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') AS SCHEMA_NAME , TABLE_NAME" +
+                            " FROM USER_TABLES T , USER_USERS U WHERE U.USERNAME = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')" +
+                            " AND (T.IOT_TYPE != 'IOT_OVERFLOW' OR T.IOT_TYPE IS NULL)");
                 } else {
-                    query = new StringBuffer("SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') AS SCHEMA_NAME , TABLE_NAME FROM USER_TABLES T , USER_USERS U WHERE T.TABLE_NAME ='" + tableName
-                        .toUpperCase() + "'");
+                    query = new StringBuffer("SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') AS SCHEMA_NAME , TABLE_NAME" +
+                            " FROM USER_TABLES T , USER_USERS U WHERE T.TABLE_NAME ='" + tableName.toUpperCase() + "'");
                 }
             } else {
                 //Mysql
@@ -117,10 +121,6 @@ public class TableMetaGenerator {
             while (rs.next()) {
                     String schema = rs.getString(1);
                     String tableName1 = rs.getString(2);
-                    if (StringUtils.startsWithIgnoreCase(databaseName, "oracle")) {
-                        schema = schema.toLowerCase();
-                        tableName1 = tableName1.toLowerCase();
-                    }
                     table = new Table("TABLE", schema, tableName1);
                     result.add(table);
             }
@@ -138,18 +138,19 @@ public class TableMetaGenerator {
 
             public Object doInConnection(Connection conn) throws SQLException, DataAccessException {
                 DatabaseMetaData metaData = conn.getMetaData();
+                DbType type = GaussUtils.judgeDbType(metaData.getDatabaseProductName());
                 ResultSet rs;
                 // get all columns
-                rs = metaData.getColumns(table.getSchema(), table.getSchema(), table.getName(), null);
-                List<ColumnMeta> columnList = new ArrayList<ColumnMeta>();
+                rs = metaData.getColumns(type != DbType.MYSQL ? null : table.getSchema(), table.getSchema(),
+                        table.getName(), null);
 
+                List<ColumnMeta> columnList = new ArrayList<ColumnMeta>();
                 while (rs.next()) {
                     String catlog = rs.getString(1);
                     String schema = rs.getString(2);
                     String name = rs.getString(3);
                     if ((table.getSchema() == null || LikeUtil.isMatch(table.getSchema(), catlog) || LikeUtil.isMatch(table.getSchema(),
-                        schema))
-                        && LikeUtil.isMatch(table.getName(), name)) {
+                        schema)) && LikeUtil.isMatch(table.getName(), name)) {
                         String columnName = rs.getString(4); // COLUMN_NAME
                         int columnType = rs.getInt(5);
                         String typeName = rs.getString(6);

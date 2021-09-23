@@ -1,14 +1,17 @@
 package com.gauss.preparer;
 
 import com.gauss.common.db.meta.Table;
-import com.gauss.common.db.sql.OpenGaussUtil;
+import com.gauss.common.db.sql.SqlFactory;
+import com.gauss.common.db.sql.SqlTemplate;
+import com.gauss.common.model.DbType;
 import com.gauss.common.model.GaussContext;
 import com.gauss.common.model.PrepareStatus;
+import com.gauss.common.utils.GaussUtils;
+import com.gauss.common.utils.Quote;
 import com.gauss.common.utils.thread.NamedThreadFactory;
 import com.gauss.exception.GaussException;
 
 import org.apache.commons.lang.StringUtils;
-import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.StatementCallback;
 
@@ -24,9 +27,13 @@ public class GaussRecordPreparer extends AbstractRecordPreparer {
 
     public Thread prepareThread = null;
 
-    String compareTableName;
+    String srcCompareTableName;
+
+    String destCompareTableName;
 
     JdbcTemplate jdbcTemplate;
+
+    DbType srcType;
 
     private volatile boolean success = true;
 
@@ -37,8 +44,12 @@ public class GaussRecordPreparer extends AbstractRecordPreparer {
     public GaussRecordPreparer(GaussContext context, int query_dop) {
         this.context = context;
         this.query_dop = query_dop;
+        this.srcType = GaussUtils.judgeDbType(context.getSourceDs());
         Table tableMeta = context.getTableMeta();
-        compareTableName = "\"" + tableMeta.getSchema() + "\".\"" + tableMeta.getName() + "_dataChecker";
+        this.srcCompareTableName = Quote.join("", Quote.ins.quote(tableMeta.getSchema()),
+                ".", Quote.ins.quote(tableMeta.getName() + "_dataCheckerA"));
+        this.destCompareTableName = Quote.join("", Quote.ins.quote(tableMeta.getSchema()),
+                ".", Quote.ins.quote(tableMeta.getName() + "_dataCheckerB"));
     }
 
     @Override
@@ -48,8 +59,9 @@ public class GaussRecordPreparer extends AbstractRecordPreparer {
         dropTable();
         createTable();
         if (StringUtils.isEmpty(prepareSql)) {
-            OpenGaussUtil openGaussUtil = new OpenGaussUtil(context);
-            prepareSql = openGaussUtil.getPrepareSql();
+            SqlFactory sqlFactory = new SqlFactory();
+            SqlTemplate sqlTemplate = sqlFactory.getSqlTemplate(DbType.OPGS, srcType, context);
+            prepareSql = sqlTemplate.getPrepareSql();
         }
 
         // Asynchronous thread
@@ -96,11 +108,11 @@ public class GaussRecordPreparer extends AbstractRecordPreparer {
     }
 
     public void createTable() {
-        jdbcTemplate.execute("create unlogged table " + compareTableName + "A\"(checksumA text);");
-        jdbcTemplate.execute("create unlogged table " + compareTableName + "B\"(checksumB text);");
+        jdbcTemplate.execute("create unlogged table " + srcCompareTableName + "(checksumA text);");
+        jdbcTemplate.execute("create unlogged table " + destCompareTableName + "(checksumB text);");
     }
     public void dropTable() {
-        jdbcTemplate.execute("drop table if exists " + compareTableName + "A\";");
-        jdbcTemplate.execute("drop table if exists " + compareTableName + "B\";");
+        jdbcTemplate.execute("drop table if exists " + srcCompareTableName);
+        jdbcTemplate.execute("drop table if exists " + destCompareTableName);
     }
 }

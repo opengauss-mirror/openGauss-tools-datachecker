@@ -117,9 +117,13 @@ public class GaussInstance extends AbstractGaussLifeCycle {
                         progressTracer.update(context.getTableMeta().getFullName(), ProgressStatus.FAILED);
                         logger.info("table[{}] is interrpt ,current status:{} !",
                             context.getTableMeta().getFullName(), extractor.getStatus());
+                        logger.error(e.toString());
                     } finally {
                         logger.info("table[{}] is end", context.getTableMeta().getFullName());
                         MDC.remove(GaussConstants.MDC_TABLE_SHIT_KEY);
+                        preparer.dropTable();
+                        mutex.countDown();
+                        tableController.release(GaussInstance.this);
                     }
                 }
 
@@ -184,7 +188,6 @@ public class GaussInstance extends AbstractGaussLifeCycle {
             logger.info("table[{}] start successful. extractor:{} , applier:{}", new Object[] {
                 context.getTableMeta().getFullName(), extractor.getClass().getName(), applier.getClass().getName()
             });
-            worker.join();
         } catch (InterruptedException e) {
             progressTracer.update(context.getTableMeta().getFullName(), ProgressStatus.FAILED);
             exception = new GaussException(e);
@@ -194,10 +197,6 @@ public class GaussInstance extends AbstractGaussLifeCycle {
             exception = new GaussException(e);
             logger.error("table[{}] start failed caused by {}", context.getTableMeta().getFullName(),
                 ExceptionUtils.getFullStackTrace(e));
-        } finally {
-            preparer.dropTable();
-            mutex.countDown();
-            tableController.release(GaussInstance.this);
         }
     }
 

@@ -8,14 +8,18 @@ import com.gauss.common.model.GaussContext;
 import com.gauss.exception.GaussException;
 
 public class SqlFactory {
-    public SqlTemplate getSqlTemplate(DbType dbType, GaussContext context) {
-        if (dbType.isMysql()) {
+    public SqlTemplate getSqlTemplate(DbType type, DbType srcType, GaussContext context) {
+        if (type.isMysql()) {
             return new MysqlUtil(context);
-        } else if (dbType.isOracle()) {
+        } else if (type.isOracle()) {
             return new OracleUtil(context);
-        } else if (dbType.isOpenGauss()) {
-            return new OpenGaussUtil(context);
+        } else if (type.isOpenGauss()) {
+            if (srcType.isOracle()) {
+                return new OpenGaussForOracle(context);
+            } else if (srcType.isMysql()) {
+                return new OpenGaussForMysql(context);
+            }
         }
-        throw new GaussException("Unkonwn database type");
+        throw new GaussException("Unknown database type");
     }
 }

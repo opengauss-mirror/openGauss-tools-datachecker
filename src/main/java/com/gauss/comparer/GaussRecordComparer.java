@@ -4,12 +4,13 @@ import com.gauss.common.audit.RecordDiffer;
 import com.gauss.common.db.meta.ColumnMeta;
 import com.gauss.common.db.meta.ColumnValue;
 import com.gauss.common.db.meta.Table;
-import com.gauss.common.db.sql.OpenGaussUtil;
 import com.gauss.common.db.sql.SqlFactory;
+import com.gauss.common.db.sql.SqlTemplate;
 import com.gauss.common.model.DbType;
 import com.gauss.common.model.GaussContext;
 import com.gauss.common.model.record.Record;
 import com.gauss.common.utils.GaussUtils;
+import com.gauss.common.utils.Quote;
 import com.gauss.exception.GaussException;
 
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -28,7 +29,9 @@ public class GaussRecordComparer extends AbstractRecordComparer {
 
     private String orinTableName;
 
-    private String compareTableName;
+    private String srcCompareTableName;
+
+    private String destCompareTableName;
 
     public GaussRecordComparer(DbType dbType, GaussContext context, int query_dop) {
         this.query_dop = query_dop;
@@ -36,7 +39,10 @@ public class GaussRecordComparer extends AbstractRecordComparer {
         this.context = context;
         Table tableMeta = context.getTableMeta();
         this.orinTableName = "\"" + tableMeta.getSchema() + "\".\"" + tableMeta.getName() + "\"";
-        this.compareTableName = "\"" + tableMeta.getSchema() + "\".\"" + tableMeta.getName() + "_dataChecker";
+        this.srcCompareTableName = Quote.join("", Quote.ins.quote(tableMeta.getSchema()),
+                ".", Quote.ins.quote(tableMeta.getName() + "_dataCheckerA"));
+        this.destCompareTableName = Quote.join("", Quote.ins.quote(tableMeta.getSchema()),
+                ".", Quote.ins.quote(tableMeta.getName() + "_dataCheckerB"));
     }
 
     @Override
@@ -51,8 +57,9 @@ public class GaussRecordComparer extends AbstractRecordComparer {
 
     @Override
     public void compare() throws GaussException {
-        OpenGaussUtil openGaussUtil = new OpenGaussUtil(context);
-        String compareSql = openGaussUtil.getCompareSql();
+        SqlFactory sqlFactory = new SqlFactory();
+        SqlTemplate sqlTemplate = sqlFactory.getSqlTemplate(DbType.OPGS, dbType, context);
+        String compareSql = sqlTemplate.getCompareSql();
         JdbcTemplate jdbcTemplate = new JdbcTemplate(context.getTargetDs());
         jdbcTemplate.execute("set query_dop to " + query_dop + ";");
         SqlRowSet result = jdbcTemplate.queryForRowSet(compareSql);
@@ -66,18 +73,17 @@ public class GaussRecordComparer extends AbstractRecordComparer {
             }
         }
         if (!diffSource.isEmpty()) {
-            SqlFactory sqlFactory = new SqlFactory();
             GaussUtils.outputUnnormal("Source table : " + orinTableName);
-            searchFromDb(sqlFactory.getSqlTemplate(dbType, context).getSearchSql(diffSource),dbType);
+            searchFromDb(sqlFactory.getSqlTemplate(dbType, dbType, context).getSearchSql(diffSource),dbType);
         }
 
         if (!diffTarget.isEmpty()) {
             GaussUtils.outputUnnormal("Target table : " + orinTableName);
-            searchFromDb(openGaussUtil.getSearchSql(diffTarget), DbType.OPGS);
+            searchFromDb(sqlTemplate.getSearchSql(diffTarget), DbType.OPGS);
         }
 
-        jdbcTemplate.execute("drop table " + compareTableName + "A\";");
-        jdbcTemplate.execute("drop table " + compareTableName + "B\";");
+        jdbcTemplate.execute("drop table " + srcCompareTableName);
+        jdbcTemplate.execute("drop table " + destCompareTableName);
     }
 
     public void searchFromDb(String searchSql, DbType dbType) {

@@ -9,7 +9,6 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 import com.gauss.common.db.sql.*;
 import org.apache.commons.lang.StringUtils;
-import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.StatementCallback;
@@ -47,7 +46,7 @@ public class DbOnceFullRecordExtractor extends AbstractRecordExtractor {
         super.start();
         if (StringUtils.isEmpty(extractSql)) {
             SqlFactory sqlFactory = new SqlFactory();
-            SqlTemplate sqlTemplate = sqlFactory.getSqlTemplate(dbType, context);
+            SqlTemplate sqlTemplate = sqlFactory.getSqlTemplate(dbType, dbType, context);
             extractSql = sqlTemplate.getExtractSql();
         }
 
@@ -157,7 +156,10 @@ public class DbOnceFullRecordExtractor extends AbstractRecordExtractor {
                         stmt.execute(extractSql);
                         ResultSet rs = stmt.getResultSet();
                         while (rs.next()) {
-                            queue.put(rs.getString(1));
+                            String res = rs.getString(1);
+                            if (res != null) {
+                                queue.put(res);
+                            }
                         }
                         rs.close();
                     } catch (SQLException | InterruptedException e) {
