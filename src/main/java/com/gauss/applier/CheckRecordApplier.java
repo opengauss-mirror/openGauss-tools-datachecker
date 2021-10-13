@@ -66,6 +66,7 @@ public class CheckRecordApplier extends AbstractGaussLifeCycle implements Record
     protected void doApply(List<String> records) throws IOException, SQLException {
         JdbcTemplate jdbcTemplate = new JdbcTemplate(context.getTargetDs());
         jdbcTemplate.execute("set query_dop to " + query_dop + ";");
+        jdbcTemplate.execute("set session_timeout to 0;");
         jdbcTemplate.execute(new ConnectionCallback() {
             @Override
             public Object doInConnection(Connection connection) throws SQLException, DataAccessException {

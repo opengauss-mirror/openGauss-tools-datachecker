@@ -18,6 +18,8 @@ public class MysqlUtil extends SqlTemplate {
 
     private GaussContext context;
 
+    static final String maxExecTime = "9999000";
+
     static final String convertChar = "convert(`%s`, char)";
 
     static final String convertFloat = "round(convert(`%s`, char), 10)";
@@ -27,6 +29,8 @@ public class MysqlUtil extends SqlTemplate {
     static final String convertGeo = "substring(AsText(`%s`), 6)";
 
     static final String convertVarchar = "lower(hex(trim(TRAILING '\\0' from `%s`)))";
+
+    static final String convertDate = "nullif(`%s`, cast(\"0000-00-00 00:00:00\" as date))";
 
     static final String convertDefault = "`%s`";
 
@@ -56,6 +60,9 @@ public class MysqlUtil extends SqlTemplate {
                 } else {
                     return String.format(convertVarchar, columnName);
                 }
+            case Types.TIMESTAMP:
+            case Types.DATE:
+                return String.format(convertDate, columnName);
             default:
                 return String.format(convertDefault, columnName);
         }
@@ -73,16 +80,14 @@ public class MysqlUtil extends SqlTemplate {
 
     @Override
     public String getExtractSql() {
-        return Quote.join(" ","select", getMd5Sql(), "from", orinTableName);
+        return Quote.join(" ","select /*+ MAX_EXECUTION_TIME(", maxExecTime, ") */",
+                getMd5Sql(), "from", orinTableName);
     }
 
     @Override
     public String getSearchSql(ArrayList<String> md5list) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("select * from ").append(orinTableName).append(" where ").append(getMd5Sql());
-        sb.append(" in (");
-        sb.append(md5list.stream().map(str->"'" + str + "'").collect(Collectors.joining(",")));
-        sb.append(")");
-        return sb.toString();
+        return Quote.join(" ", "select /*+ MAX_EXECUTION_TIME(", maxExecTime, ") */ * from",
+                orinTableName, "where", getMd5Sql(), "in (",
+                md5list.stream().map(str->"'" + str + "'").collect(Collectors.joining(",")), ")");
     }
 }

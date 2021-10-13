@@ -32,12 +32,9 @@ public class RecordDiffer {
         record_format += "\t{4}" + SEP;
     }
 
-    public static void diff(DbType dbType, Record record) {
-        diffLogger.info(diffMessage(dbType,
-            record.getSchemaName(),
-            record.getTableName(),
-            record.getColumns(),
-            "record not found in opposite database"));
+    public static void diff(DbType dbType, String schemaName, String tableName, List<ColumnValue> columns) {
+        diffLogger.info(diffMessage(dbType, schemaName, tableName, columns,
+                "record not found in opposite database"));
     }
 
     private static String diffMessage(DbType dbType, String schemaName, String tableName, List<ColumnValue> primaryKeys, String message) {
