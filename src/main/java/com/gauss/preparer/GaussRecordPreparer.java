@@ -92,6 +92,12 @@ public class GaussRecordPreparer extends AbstractRecordPreparer {
 
         public void run() {
             jdbcTemplate.execute("set query_dop to " + query_dop + ";");
+            jdbcTemplate.execute("set session_timeout to 0;");
+            if (srcType == DbType.MYSQL) {
+                jdbcTemplate.execute("set behavior_compat_options to 'display_leading_zero';");
+            } else {
+                jdbcTemplate.execute("set behavior_compat_options to '';");
+            }
             jdbcTemplate.execute(new StatementCallback() {
                 public Object doInStatement(Statement stmt) {
                     try {

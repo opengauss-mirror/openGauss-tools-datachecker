@@ -33,6 +33,8 @@ public class GaussRecordComparer extends AbstractRecordComparer {
 
     private String destCompareTableName;
 
+    static final int maxInValues = 9999;
+
     public GaussRecordComparer(DbType dbType, GaussContext context, int query_dop) {
         this.query_dop = query_dop;
         this.dbType = dbType;
@@ -59,10 +61,15 @@ public class GaussRecordComparer extends AbstractRecordComparer {
     public void compare() throws GaussException {
         SqlFactory sqlFactory = new SqlFactory();
         SqlTemplate sqlTemplate = sqlFactory.getSqlTemplate(DbType.OPGS, dbType, context);
+        SqlTemplate sqlTemplate2 = sqlFactory.getSqlTemplate(dbType, dbType, context);
         String compareSql = sqlTemplate.getCompareSql();
-        JdbcTemplate jdbcTemplate = new JdbcTemplate(context.getTargetDs());
-        jdbcTemplate.execute("set query_dop to " + query_dop + ";");
-        SqlRowSet result = jdbcTemplate.queryForRowSet(compareSql);
+        JdbcTemplate jdbcTemplateOpgs = new JdbcTemplate(context.getTargetDs());
+        JdbcTemplate jdbcTemplateSource = new JdbcTemplate(context.getSourceDs());
+        jdbcTemplateOpgs.execute("set query_dop to " + query_dop + ";");
+        jdbcTemplateOpgs.execute("set session_timeout to 0;");
+        SqlRowSet result = jdbcTemplateOpgs.queryForRowSet(compareSql);
+        boolean isSrcDiff = false;
+        boolean isTargetDiff =false;
         ArrayList<String> diffSource = new ArrayList<>();
         ArrayList<String> diffTarget = new ArrayList<>();
         while (result.next()) {
@@ -71,33 +78,51 @@ public class GaussRecordComparer extends AbstractRecordComparer {
             } else {
                 diffTarget.add(result.getString(2));
             }
+
+            if (diffSource.size() >= maxInValues) {
+                isSrcDiff = true;
+                searchFromDb(sqlTemplate2.getSearchSql(diffSource), dbType, jdbcTemplateSource);
+                diffSource.clear();
+            }
+
+            if (diffTarget.size() >= maxInValues) {
+                isTargetDiff = true;
+                searchFromDb(sqlTemplate.getSearchSql(diffTarget), DbType.OPGS, jdbcTemplateOpgs);
+                diffTarget.clear();
+            }
         }
+
         if (!diffSource.isEmpty()) {
-            GaussUtils.outputUnnormal("Source table : " + orinTableName);
-            searchFromDb(sqlFactory.getSqlTemplate(dbType, dbType, context).getSearchSql(diffSource),dbType);
+            isSrcDiff = true;
+            searchFromDb(sqlTemplate2.getSearchSql(diffSource), dbType, jdbcTemplateSource);
+            diffSource.clear();
         }
 
         if (!diffTarget.isEmpty()) {
-            GaussUtils.outputUnnormal("Target table : " + orinTableName);
-            searchFromDb(sqlTemplate.getSearchSql(diffTarget), DbType.OPGS);
+            isTargetDiff = true;
+            searchFromDb(sqlTemplate.getSearchSql(diffTarget), DbType.OPGS, jdbcTemplateOpgs);
+            diffTarget.clear();
         }
 
-        jdbcTemplate.execute("drop table " + srcCompareTableName);
-        jdbcTemplate.execute("drop table " + destCompareTableName);
+        if (isSrcDiff) {
+            GaussUtils.outputUnnormal("Source table : " + orinTableName);
+        }
+
+        if (isTargetDiff) {
+            GaussUtils.outputUnnormal("Target table : " + orinTableName);
+        }
+
+        jdbcTemplateOpgs.execute("drop table " + srcCompareTableName);
+        jdbcTemplateOpgs.execute("drop table " + destCompareTableName);
     }
 
-    public void searchFromDb(String searchSql, DbType dbType) {
-        SqlRowSet rs;
-        if (dbType == DbType.OPGS) {
-            rs = new JdbcTemplate(context.getTargetDs()).queryForRowSet(searchSql);
-        } else {
-            rs = new JdbcTemplate(context.getSourceDs()).queryForRowSet(searchSql);
-        }
+    public void searchFromDb(String searchSql, DbType dbType, JdbcTemplate jdbcTemplate) {
+        SqlRowSet rs = jdbcTemplate.queryForRowSet(searchSql);
+        Table meta = context.getTableMeta();
+        List<ColumnValue> cms = new ArrayList<ColumnValue>();
 
         while (rs.next()) {
-            List<ColumnValue> cms = new ArrayList<ColumnValue>();
-
-            for (ColumnMeta col : context.getTableMeta().getColumns()) {
+            for (ColumnMeta col : meta.getColumns()) {
                 ColumnValue cv = null;
                 try {
                     cv = getColumnValue(rs, col);
@@ -107,8 +132,8 @@ public class GaussRecordComparer extends AbstractRecordComparer {
                 cms.add(cv);
             }
 
-            Record re = new Record(context.getTableMeta().getSchema(), context.getTableMeta().getName(), cms);
-            RecordDiffer.diff(dbType, re);
+            RecordDiffer.diff(dbType, meta.getSchema(), meta.getName(), cms);
+            cms.clear();
         }
     }
 
