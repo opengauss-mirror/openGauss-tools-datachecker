@@ -107,7 +107,7 @@ public class TableMetaGenerator {
                             " FROM USER_TABLES T , USER_USERS U WHERE T.TABLE_NAME ='" + tableName.toUpperCase() + "'");
                 }
             } else {
-                //Mysql
+                //Mysql and PostgreSQL
                 if (StringUtils.isEmpty(tableName)) {
                     // ignore system tales
                     query = new StringBuffer("select TABLE_SCHEMA, TABLE_NAME from information_schema.tables where table_schema='"+ schemaName

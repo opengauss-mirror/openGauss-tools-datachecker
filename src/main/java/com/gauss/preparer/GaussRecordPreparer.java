@@ -6,7 +6,6 @@ import com.gauss.common.db.sql.SqlTemplate;
 import com.gauss.common.model.DbType;
 import com.gauss.common.model.GaussContext;
 import com.gauss.common.model.PrepareStatus;
-import com.gauss.common.utils.GaussUtils;
 import com.gauss.common.utils.Quote;
 import com.gauss.common.utils.thread.NamedThreadFactory;
 import com.gauss.exception.GaussException;
@@ -41,10 +40,10 @@ public class GaussRecordPreparer extends AbstractRecordPreparer {
         return success;
     }
 
-    public GaussRecordPreparer(GaussContext context, int query_dop) {
+    public GaussRecordPreparer(DbType srcType, GaussContext context, int query_dop) {
         this.context = context;
         this.query_dop = query_dop;
-        this.srcType = GaussUtils.judgeDbType(context.getSourceDs());
+        this.srcType = srcType;
         Table tableMeta = context.getTableMeta();
         this.srcCompareTableName = Quote.join("", Quote.ins.quote(tableMeta.getSchema()),
                 ".", Quote.ins.quote(tableMeta.getName() + "_dataCheckerA"));

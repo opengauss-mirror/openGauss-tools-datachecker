@@ -40,10 +40,6 @@
             <source>./src/main/resources/gauss.properties</source>
             <outputDirectory>conf</outputDirectory>
         </file>
-        <file>
-            <source>./lib/opengauss-jdbc-2.0.0.jar</source>
-            <outputDirectory>lib</outputDirectory>
-        </file>
     </files>
     <dependencySets>
         <dependencySet>

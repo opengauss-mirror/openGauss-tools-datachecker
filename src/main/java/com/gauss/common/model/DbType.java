@@ -9,11 +9,15 @@ public enum DbType {
     /**
      * openGauss DB
      */
-    OPGS("org.postgresql.Driver"),
+    OPGS("org.opengauss.Driver"),
     /**
      * oracle DB
      */
-    ORACLE("oracle.jdbc.driver.OracleDriver");
+    ORACLE("oracle.jdbc.driver.OracleDriver"),
+    /**
+     * postgreSQL DB
+     */
+    PG("org.postgresql.Driver");
 
     private String driver;
 
@@ -35,6 +39,10 @@ public enum DbType {
 
     public boolean isOpenGauss() {
         return this.equals(DbType.OPGS);
+    }
+
+    public boolean isPostgreSQL() {
+        return this.equals(DbType.PG);
     }
 
 }
