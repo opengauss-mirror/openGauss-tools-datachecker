@@ -132,7 +132,7 @@ public class GaussController extends AbstractGaussLifeCycle {
             RecordApplier applier = chooseApplier(context);
             GaussInstance instance = new GaussInstance(context);
             StatAggregation statAggregation = new StatAggregation(statBufferSize, statPrintInterval);
-            instance.setPreparer(new GaussRecordPreparer(context,query_dop));
+            instance.setPreparer(new GaussRecordPreparer(sourceDbType, context,query_dop));
             instance.setExtractor(extractor);
             instance.setApplier(applier);
             instance.setComparer(new GaussRecordComparer(sourceDbType, context, query_dop));
@@ -225,6 +225,10 @@ public class GaussController extends AbstractGaussLifeCycle {
             return recordExtractor;
         } else if (sourceDbType == DbType.ORACLE) {
             DbOnceFullRecordExtractor recordExtractor = new DbOnceFullRecordExtractor(context, DbType.ORACLE);
+            recordExtractor.setTracer(progressTracer);
+            return recordExtractor;
+        } else if (sourceDbType == DbType.PG){
+            DbOnceFullRecordExtractor recordExtractor = new DbOnceFullRecordExtractor(context, DbType.PG);
             recordExtractor.setTracer(progressTracer);
             return recordExtractor;
         } else {

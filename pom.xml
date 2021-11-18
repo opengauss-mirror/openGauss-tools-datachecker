@@ -149,12 +149,16 @@
             <artifactId>ojdbc8</artifactId>
             <version>21.1.0.0</version>
         </dependency>
+        <!-- postgreSQL -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>42.2.23</version>
+        </dependency>
         <dependency>
             <groupId>org.opengauss</groupId>
             <artifactId>opengauss-jdbc</artifactId>
-            <version>2.0.0</version>
-            <scope>system</scope>
-            <systemPath>${user.dir}/lib/opengauss-jdbc-2.0.0.jar</systemPath>
+            <version>2.0.1-compatibility</version>
         </dependency>
         <dependency>
             <groupId>com.alibaba</groupId>
@@ -165,7 +169,7 @@
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
-            <version>1.16.16</version>
+            <version>1.18.0</version>
         </dependency>
         <dependency>
             <groupId>commons-configuration</groupId>

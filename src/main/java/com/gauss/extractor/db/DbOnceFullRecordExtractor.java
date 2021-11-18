@@ -44,6 +44,7 @@ public class DbOnceFullRecordExtractor extends AbstractRecordExtractor {
     @Override
     public void start() {
         super.start();
+        Runnable extractor;
         if (StringUtils.isEmpty(extractSql)) {
             SqlFactory sqlFactory = new SqlFactory();
             SqlTemplate sqlTemplate = sqlFactory.getSqlTemplate(dbType, dbType, context);
@@ -52,17 +53,14 @@ public class DbOnceFullRecordExtractor extends AbstractRecordExtractor {
 
         // 启动异步线程
         if (dbType == DbType.ORACLE) {
-            //Oracle
-            extractorThread = new NamedThreadFactory(
-                this.getClass().getSimpleName() + "-" + context.getTableMeta().getFullName()).newThread(
-                new OracleContinueExtractor(context));
+            extractor = new OracleContinueExtractor(context);
+        } else if (dbType == DbType.PG) {
+            extractor = new PGContinueExtractor(context);
         } else {
-            //Mysql
-            extractorThread = new NamedThreadFactory(
-                this.getClass().getSimpleName() + "-" + context.getTableMeta().getFullName()).newThread(
-                new MysqlContinueExtractor(context));
+            extractor = new MysqlContinueExtractor(context);
         }
-
+        extractorThread = new NamedThreadFactory(
+            this.getClass().getSimpleName() + "-" + context.getTableMeta().getFullName()).newThread(extractor);
         extractorThread.start();
 
         queue = new LinkedBlockingQueue<String>(context.getOnceCrawNum() * 2);
@@ -173,4 +171,36 @@ public class DbOnceFullRecordExtractor extends AbstractRecordExtractor {
 
         }
     }
+
+    public class PGContinueExtractor implements Runnable {
+
+        private JdbcTemplate jdbcTemplate;
+
+        public PGContinueExtractor(GaussContext context){
+            jdbcTemplate = new JdbcTemplate(context.getSourceDs());
+        }
+
+        public void run() {
+            jdbcTemplate.execute(new StatementCallback() {
+
+                public Object doInStatement(Statement stmt) throws SQLException {
+                    stmt.setFetchSize(200);
+                    stmt.execute(extractSql);
+                    ResultSet rs = stmt.getResultSet();
+                    while (rs.next()) {
+                        try {
+                            queue.put(rs.getString(1));
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt(); // transfer
+                            throw new GaussException(e);
+                        }
+                    }
+                    setStatus(ExtractStatus.TABLE_END);
+                    rs.close();
+                    return null;
+                }
+            });
+        }
+    }
+
 }
