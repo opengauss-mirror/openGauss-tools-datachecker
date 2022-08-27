@@ -41,16 +41,19 @@ public abstract class OpenGaussUtil extends SqlTemplate {
 
     static final String convertVarchar = "substring(cast(%s as varchar) from 3)";
 
+    static final String convertDate = "nvl(to_char(@Column, 'YYYY-MM-DD HH24:MI:SS.FF') ,'0000-00-00 00:00:00')";
+    static final String convertDateTmp = "@Column";
+
     static final String convertDefault = "%s";
 
-    static final String convertIntervalDay = "round((extract(day from %s) * 60 * 60 * 24 + extract(hour from %s)" +
-            " * 60 * 60 + extract(min from %s) * 60 + extract(second from %s))::numeric, 10)";
+    static final String convertIntervalDay = "round((extract(day from %s) * 60 * 60 * 24 + extract(hour from %s)"
+        + " * 60 * 60 + extract(min from %s) * 60 + extract(second from %s))::numeric, 10)";
 
     static final String convertIntervalYear = "extract(year from %s) * 12 + extract(month from %s)";
 
     private String convert(ColumnMeta meta) {
         String columnName = quote + meta.getName() + quote;
-        switch(meta.getType()) {
+        switch (meta.getType()) {
             case Types.BOOLEAN:
             case Types.BIT:
                 return String.format(convertBit, columnName);
@@ -75,11 +78,15 @@ public abstract class OpenGaussUtil extends SqlTemplate {
                 return String.format(convertIntervalDay, columnName, columnName, columnName, columnName);
             case INTERVAL_YEAR:
                 return String.format(convertIntervalYear, columnName, columnName);
+            case Types.TIMESTAMP:
+            case Types.DATE:
+                return convertDate.replace(convertDateTmp, columnName);
             default:
                 return String.format(convertDefault, columnName);
         }
     }
 
+    @Override
     public String getMd5Sql() {
         StringBuilder sb = new StringBuilder();
         sb.append("md5(");
@@ -91,25 +98,26 @@ public abstract class OpenGaussUtil extends SqlTemplate {
         return sb.toString();
     }
 
+    @Override
     public String getSearchSql(ArrayList<String> md5list) {
         StringBuilder sb = new StringBuilder();
         sb.append("select * from ").append(orinTableName).append(" where ").append(getMd5Sql());
         sb.append(" in (");
-        sb.append(md5list.stream().map(str->"'" + str + "'").collect(Collectors.joining(",")));
+        sb.append(md5list.stream().map(str -> "'" + str + "'").collect(Collectors.joining(",")));
         sb.append(")");
         return sb.toString();
     }
 
+    @Override
     public String getPrepareSql() {
-        return Quote.join(" ",
-                "insert into", destCompareTableName, "select", getMd5Sql(), "from", orinTableName);
+        return Quote.join(" ", "insert into", destCompareTableName, "select", getMd5Sql(), "from", orinTableName);
     }
 
+    @Override
     public String getCompareSql() {
-        return Quote.join(" ",
-                "select * from", srcCompareTableName, "t1 full join", destCompareTableName,
-                "t2 on t1.checksumA=t2.checksumB where (t2.checksumB is null or t1.checksumA is null)",
-                "and (t2.checksumB is not null or t1.checksumA is not null);");
+        return Quote.join(" ", "select * from", srcCompareTableName, "t1 full join", destCompareTableName,
+            "t2 on t1.checksumA=t2.checksumB where (t2.checksumB is null or t1.checksumA is null)",
+            "and (t2.checksumB is not null or t1.checksumA is not null);");
     }
 
     public void setConcatStart(String concatStart) { this.concatStart = concatStart; }
@@ -122,7 +130,9 @@ public abstract class OpenGaussUtil extends SqlTemplate {
 
     public void setSrcCompareTableName(String srcCompareTableName) { this.srcCompareTableName = srcCompareTableName; }
 
-    public void setDestCompareTableName(String destCompareTableName) { this.destCompareTableName = destCompareTableName; }
+    public void setDestCompareTableName(String destCompareTableName) {
+        this.destCompareTableName = destCompareTableName;
+    }
 
     public void setOrinTableName(String orinTableName) { this.orinTableName = orinTableName; }
 }

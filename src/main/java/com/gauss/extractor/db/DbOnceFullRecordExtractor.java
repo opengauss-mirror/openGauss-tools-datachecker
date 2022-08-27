@@ -41,6 +41,7 @@ public class DbOnceFullRecordExtractor extends AbstractRecordExtractor {
         this.context = context;
         this.dbType = dbType;
     }
+
     @Override
     public void start() {
         super.start();
@@ -59,18 +60,20 @@ public class DbOnceFullRecordExtractor extends AbstractRecordExtractor {
         } else {
             extractor = new MysqlContinueExtractor(context);
         }
-        extractorThread = new NamedThreadFactory(
-            this.getClass().getSimpleName() + "-" + context.getTableMeta().getFullName()).newThread(extractor);
+        extractorThread =
+            new NamedThreadFactory(this.getClass().getSimpleName() + "-" + context.getTableMeta().getFullName())
+                .newThread(extractor);
         extractorThread.start();
 
         queue = new LinkedBlockingQueue<String>(context.getOnceCrawNum() * 2);
         tracer.update(context.getTableMeta().getFullName(), ProgressStatus.FULLING);
     }
+
     @Override
     public void stop() {
         super.stop();
         extractorThread.interrupt();
-        
+
         try {
             extractorThread.join(2 * 1000);
         } catch (InterruptedException e) {
@@ -78,7 +81,7 @@ public class DbOnceFullRecordExtractor extends AbstractRecordExtractor {
         }
         tracer.update(context.getTableMeta().getFullName(), ProgressStatus.SUCCESS);
     }
-
+    @Override
     public List<String> extract() throws GaussException {
         List<String> records = Lists.newArrayListWithCapacity(context.getOnceCrawNum());
         for (int i = 0; i < context.getOnceCrawNum(); i++) {
@@ -110,10 +113,11 @@ public class DbOnceFullRecordExtractor extends AbstractRecordExtractor {
         public MysqlContinueExtractor(GaussContext context) {
             jdbcTemplate = new JdbcTemplate(context.getSourceDs());
         }
-
+        @Override
         public void run() {
             jdbcTemplate.execute("SET NAMES utf8;");
             jdbcTemplate.execute(new ConnectionCallback() {
+                @Override
                 public Object doInConnection(Connection conn) {
                     try {
                         Statement stmt = conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
@@ -144,10 +148,10 @@ public class DbOnceFullRecordExtractor extends AbstractRecordExtractor {
         public OracleContinueExtractor(GaussContext context) {
             jdbcTemplate = new JdbcTemplate(context.getSourceDs());
         }
-
+        @Override
         public void run() {
             jdbcTemplate.execute(new StatementCallback() {
-
+                @Override
                 public Object doInStatement(Statement stmt) throws SQLException {
                     try {
                         stmt.setFetchSize(0);
@@ -176,13 +180,13 @@ public class DbOnceFullRecordExtractor extends AbstractRecordExtractor {
 
         private JdbcTemplate jdbcTemplate;
 
-        public PGContinueExtractor(GaussContext context){
+        public PGContinueExtractor(GaussContext context) {
             jdbcTemplate = new JdbcTemplate(context.getSourceDs());
         }
-
+        @Override
         public void run() {
             jdbcTemplate.execute(new StatementCallback() {
-
+                @Override
                 public Object doInStatement(Statement stmt) throws SQLException {
                     stmt.setFetchSize(200);
                     stmt.execute(extractSql);

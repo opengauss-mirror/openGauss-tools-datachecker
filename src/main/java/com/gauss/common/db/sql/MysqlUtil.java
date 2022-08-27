@@ -30,8 +30,8 @@ public class MysqlUtil extends SqlTemplate {
 
     static final String convertVarchar = "lower(hex(trim(TRAILING '\\0' from `%s`)))";
 
-    static final String convertDate = "nullif(`%s`, cast(\"0000-00-00 00:00:00\" as date))";
-
+    static final String convertDate = "if(`@Column` is NULL, '0000-00-00 00:00:00',DATE_FORMAT(`@Column`,'%Y-%m-%d %H:%i:%s.%f'))";
+    static final String convertDateTmp = "@Column";
     static final String convertDefault = "`%s`";
 
     public MysqlUtil(GaussContext context) {
@@ -42,7 +42,7 @@ public class MysqlUtil extends SqlTemplate {
 
     static private String convert(ColumnMeta meta) {
         String columnName = meta.getName();
-        switch(meta.getType()) {
+        switch (meta.getType()) {
             case Types.BOOLEAN:
             case Types.CHAR:
                 return String.format(convertChar, columnName);
@@ -62,7 +62,7 @@ public class MysqlUtil extends SqlTemplate {
                 }
             case Types.TIMESTAMP:
             case Types.DATE:
-                return String.format(convertDate, columnName);
+                return convertDate.replace(convertDateTmp, columnName);
             default:
                 return String.format(convertDefault, columnName);
         }
@@ -80,14 +80,13 @@ public class MysqlUtil extends SqlTemplate {
 
     @Override
     public String getExtractSql() {
-        return Quote.join(" ","select /*+ MAX_EXECUTION_TIME(", maxExecTime, ") */",
-                getMd5Sql(), "from", orinTableName);
+        return Quote
+            .join(" ", "select /*+ MAX_EXECUTION_TIME(", maxExecTime, ") */", getMd5Sql(), "from", orinTableName);
     }
 
     @Override
     public String getSearchSql(ArrayList<String> md5list) {
-        return Quote.join(" ", "select /*+ MAX_EXECUTION_TIME(", maxExecTime, ") */ * from",
-                orinTableName, "where", getMd5Sql(), "in (",
-                md5list.stream().map(str->"'" + str + "'").collect(Collectors.joining(",")), ")");
+        return Quote.join(" ", "select /*+ MAX_EXECUTION_TIME(", maxExecTime, ") */ * from", orinTableName, "where",
+            getMd5Sql(), "in (", md5list.stream().map(str -> "'" + str + "'").collect(Collectors.joining(",")), ")");
     }
 }

@@ -8,7 +8,6 @@ import com.gauss.common.db.sql.SqlFactory;
 import com.gauss.common.db.sql.SqlTemplate;
 import com.gauss.common.model.DbType;
 import com.gauss.common.model.GaussContext;
-import com.gauss.common.model.record.Record;
 import com.gauss.common.utils.GaussUtils;
 import com.gauss.common.utils.Quote;
 import com.gauss.exception.GaussException;
@@ -17,6 +16,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.rowset.SqlRowSet;
 
 import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.sql.Types;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -41,21 +43,21 @@ public class GaussRecordComparer extends AbstractRecordComparer {
         this.context = context;
         Table tableMeta = context.getTableMeta();
         this.orinTableName = "\"" + tableMeta.getSchema() + "\".\"" + tableMeta.getName() + "\"";
-        this.srcCompareTableName = Quote.join("", Quote.ins.quote(tableMeta.getSchema()),
-                ".", Quote.ins.quote(tableMeta.getName() + "_dataCheckerA"));
-        this.destCompareTableName = Quote.join("", Quote.ins.quote(tableMeta.getSchema()),
-                ".", Quote.ins.quote(tableMeta.getName() + "_dataCheckerB"));
+        this.srcCompareTableName = Quote.join("", Quote.ins.quote(tableMeta.getSchema()), ".",
+            Quote.ins.quote(tableMeta.getName() + "_dataCheckerA"));
+        this.destCompareTableName = Quote.join("", Quote.ins.quote(tableMeta.getSchema()), ".",
+            Quote.ins.quote(tableMeta.getName() + "_dataCheckerB"));
     }
 
     @Override
     public void start() {
         super.start();
     }
+
     @Override
     public void stop() {
         super.stop();
     }
-
 
     @Override
     public void compare() throws GaussException {
@@ -69,7 +71,7 @@ public class GaussRecordComparer extends AbstractRecordComparer {
         jdbcTemplateOpgs.execute("set session_timeout to 0;");
         SqlRowSet result = jdbcTemplateOpgs.queryForRowSet(compareSql);
         boolean isSrcDiff = false;
-        boolean isTargetDiff =false;
+        boolean isTargetDiff = false;
         ArrayList<String> diffSource = new ArrayList<>();
         ArrayList<String> diffTarget = new ArrayList<>();
         while (result.next()) {
@@ -146,6 +148,11 @@ public class GaussRecordComparer extends AbstractRecordComparer {
             value = rs.getString(col.getName());
         } else if (GaussUtils.isClobType(col.getType())) {
             value = rs.getString(col.getName());
+        } else if (col.getType() == Types.TIMESTAMP) {
+            value = rs.getObject(col.getName());
+            if (value instanceof Timestamp) {
+                value = ((Timestamp) value).toLocalDateTime();
+            }
         } else {
             value = rs.getObject(col.getName());
         }
