@@ -112,11 +112,11 @@
       ${table} 为各个表的表名，其下的table.log为该表的校验过程总日志，extractor.log为checksum提取过程的总日志，applier.log为插入checksum过程中的总日志。check.log记录了校验失败的具体某一行的数据。如没有出现check.log，则表示校验结果为正确。
       ```
 
-      更详细的使用指导可参考：http://zhouxiongjia.com/2021/06/25/datachecker-usage/
+    更详细的使用指导可参考：[http://zhouxiongjia.com/2021/06/25/datachecker-usage/](https://gitee.com/link?target=http%3A%2F%2Fzhouxiongjia.com%2F2021%2F06%2F25%2Fdatachecker-usage%2F) 
 
-   参与贡献
+参与贡献
 
-   1. Fork 本仓库
+1. Fork 本仓库
    2. 新建 Feat_xxx 分支
    3. 提交代码
    4. 新建 Pull Request
