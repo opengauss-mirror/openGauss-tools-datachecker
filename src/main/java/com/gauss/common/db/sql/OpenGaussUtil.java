@@ -35,7 +35,7 @@ public abstract class OpenGaussUtil extends SqlTemplate {
 
     static final String convertChar = "cast(%s as varchar)";
 
-    static final String convertFloat = "round(%s::numeric, 10)";
+    static final String convertFloat = "to_char(%s, 'fm99999999999999999999.0000000000')";
 
     static final String convertGeo = "replace(cast(%s as varchar),',',' ')";
 
