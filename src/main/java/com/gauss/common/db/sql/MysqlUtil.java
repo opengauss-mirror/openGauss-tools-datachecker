@@ -28,7 +28,7 @@ public class MysqlUtil extends SqlTemplate {
 
     static final String convertGeo = "substring(AsText(`%s`), 6)";
 
-    static final String convertVarchar = "lower(hex(trim(TRAILING '\\0' from `%s`)))";
+    static final String convertVarchar = "cast(hex(trim(TRAILING '\\0' from `%s`)) as varchar)";
 
     static final String convertDate = "if(`@Column` is NULL, '0000-00-00 00:00:00',DATE_FORMAT(`@Column`,'%Y-%m-%d %H:%i:%s.%f'))";
     static final String convertDateTmp = "@Column";

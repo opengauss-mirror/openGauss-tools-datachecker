@@ -43,7 +43,7 @@ public abstract class OpenGaussUtil extends SqlTemplate {
 
     static final String convertDate = "nvl(to_char(@Column, 'YYYY-MM-DD HH24:MI:SS.FF') ,'0000-00-00 00:00:00')";
     static final String convertDateTmp = "@Column";
-
+    static final String covertBlob = "cast(%s as char)";
     static final String convertDefault = "%s";
 
     static final String convertIntervalDay = "round((extract(day from %s) * 60 * 60 * 24 + extract(hour from %s)"
@@ -67,12 +67,13 @@ public abstract class OpenGaussUtil extends SqlTemplate {
             case Types.NUMERIC:
                 return String.format(convertFloat, columnName);
             case Types.VARBINARY:
+                return String.format(convertVarchar, columnName);
             case Types.BINARY:
             case Types.LONGVARBINARY:
                 if (meta.getTypeName().equals("GEOMETRY")) {
                     return String.format(convertGeo, columnName);
                 } else {
-                    return String.format(convertVarchar, columnName);
+                    return String.format(covertBlob, columnName);
                 }
             case INTERVAL_DAY:
                 return String.format(convertIntervalDay, columnName, columnName, columnName, columnName);
